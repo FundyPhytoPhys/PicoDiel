@@ -1,0 +1,637 @@
+---
+title: "Changing diel growth symmetries and light-capture in PhycoCyanin and PhycoErythrin-rich picocyanobacteria, across photic regimes and growth phases"
+author:
+- Sylwia Śliwińska-Wilczewska:
+    institute:
+    - MTA
+    - UG
+    email: ssliwinskawilczews@mta.ca
+- Marta Konik:
+    institute:
+    - VU
+    - IOPAN
+    email: mk@iopan.gda.pl
+- Mireille Savoie:
+    institute: MTA
+    email: msavoie@mta.ca
+- Naaman Omar:
+    institute: MTA
+    email: nomar@mta.ca
+- Douglas A. Campbell:
+    institute: MTA
+    email: dcampbel@mta.ca
+    correspondence: true
+institute:
+- MTA: Department of Biology, Mount Allison University, 53 York St., Sackville NB,
+    Canada, E4L 1C9
+- UG: "Institute of Oceanography, University of Gdansk, 46 Pilsudskiego St, P81-378,
+    Gdynia, Poland"
+- VU: Department of Geography, University of Victoria, Victoria, BC V8P 5C2, Canada
+- IOPAN: "Institute of Oceanology, Polish Academy of Sciences, 81-712 Sopot, Poland"
+output:
+  bookdown::word_document2:
+    reference_docx: Template.docx
+    code-folding: show
+    keep_md: yes
+    fig.caption: yes
+    toc: FALSE
+    pandoc_args:
+    - "--lua-filter=scholarly-metadata.lua"
+    - "--lua-filter=author-info-blocks.lua"
+  html_document:
+    df_print: paged
+  word_document:
+    reference_docx: Template.docx
+    code-folding: show
+    keep_md: yes
+    fig.caption: yes
+    toc: FALSE
+    pandoc_args:
+    - "--lua-filter=scholarly-metadata.lua"
+    - "--lua-filter=author-info-blocks.lua"
+bibliography:
+- BalticPhotoperiod.bib
+- packages.bib
+csl: "plos-one.csl"
+---
+
+```{r, import libraries, include = FALSE}
+library(tidyverse)
+library(glue)
+library(googlesheets4)
+googlesheets4:: gs4_deauth()
+#library(kableExtra)
+library(flextable)
+library(officer)
+library(knitr)
+library(readxl)
+library(stringr)
+library(rmarkdown)
+library(gdtools)
+#library(trackdown)
+options(knitr.table.format = "word_document2", knitr.kable.NA = '') 
+```
+
+```{r, save package citations, include = FALSE}
+knitr:: write_bib(c("tidyverse", "glue", "googlesheets4", "kableExtra"), "packages.bib")
+```
+
+```{r defining filepaths, include = FALSE}
+FiguresFP <- file.path("..", "Output", "Figures")
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Supplementary material {.unnumbered}
+
+```{r GrowthCurveOD680, fig.cap = GrowthCurveOD680_cap, fig.height = 8, fig.width = 6, echo = FALSE}
+GrowthCurveOD680_cap<- glue("**Growth curves (tracked as OD~680~) vs. elapsed time (h).** Growth curves were estimated over 5-min intervals for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) of *Synechococcus* sp. originating from the Baltic Sea. Cultures were grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m^−2^s^−1^; and photoperiods of 8, 12, 16, or 24 h. The vertical lines represent the time when the cultures (PC-rich_056; dark green, PC-rich_077; light green, PE-rich_048; light red, PE-rich_127; dark red) reached their maximum absolute hourly growth (tMaxAG), taken as an index of transition from exponential to pre-stationary growth phases. The orange area represents the photoperiods, with peak PAR x 1/1000 to scale to the Y axis.", .sep = " ")
+knitr::include_graphics(file.path(FiguresFP, "SFig_GrowthCurve_OD680.png"))
+```
+
+```{r GrowthCurveOD720, fig.cap = GrowthCurveOD720_cap, fig.height = 8, fig.width = 6, echo = FALSE}
+GrowthCurveOD720_cap<- glue("**Growth curves (tracked as OD~720~) vs. elapsed time (h).** Growth curves were estimated over 5-min intervals for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) of *Synechococcus* sp. originating from the Baltic Sea. Cultures were grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m^−2^s^−1^; and photoperiods of 8, 12, 16, or 24 h. The vertical lines represent the time when the cultures (PC-rich_056; dark green, PC-rich_077; light green, PE-rich_048; light red, PE-rich_127; dark red) reached their maximum absolute hourly growth (tMaxAG), taken as an index of transition from exponential to pre-stationary growth phases. The orange area represents the photoperiods, with peak PAR x 1/1000 to scale to the Y axis.", .sep = " ")
+knitr::include_graphics(file.path(FiguresFP, "SFig_GrowthCurve_OD720.png"))
+```
+
+
+```{r GrowthCurveDeltaOD, fig.cap = GrowthCurveDeltaOD_cap, fig.height = 8, fig.width = 6, echo = FALSE}
+GrowthCurveDeltaOD_cap<- glue("**Growth curves (tracked as chlorophyll proxy OD~680~-OD~720~; \u0394 OD) vs. elapsed time (h).** Growth curves were estimated over 5-min intervals for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) of *Synechococcus* sp. originating from the Baltic Sea. Cultures were grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m^−2^s^−1^; and photoperiods of 8, 12, 16, or 24 h. The vertical lines represent the time when the cultures (PC-rich_056; dark green, PC-rich_077; light green, PE-rich_048; light red, PE-rich_127; dark red) reached their maximum absolute hourly growth (tMaxAG), taken as an index of transition from exponential to pre-stationary growth phases. The orange area represents the photoperiods, with peak PAR x 1/2000 to scale to the Y axis.", .sep = " ")
+knitr::include_graphics(file.path(FiguresFP, "SFig_GrowthCurve_DeltaOD.png"))
+```
+
+
+```{r GrowthCurveFitAll, fig.cap = GrowthCurveFitAll_cap, fig.height = 8, fig.width = 6, echo = FALSE}
+GrowthCurveFitAll_cap<- glue("**Logistic fits of chlorophyll proxy OD~680~-OD~720~ (\u0394 OD) vs. elapsed time (h).** Logistic fits were estimated for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) of *Synechococcus* sp. originating from the Baltic Sea. Cultures were grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m^−2^s^−1^; and photoperiods of 8, 12, 16, or 24 h. Growth curves (thin line) estimated over 5-min intervals for each strain were also presented (PC-rich_056; dark green, PC-rich_077; light green, PE-rich_048; light red, PE-rich_127; dark red).", .sep = " ")
+knitr::include_graphics(file.path(FiguresFP, "SFig_GrowthCurve_FitAll.png"))
+```
+
+
+```{r GrowthRateLight, fig.cap = GrowthRateLight_cap, fig.height = 8, fig.width = 6, echo = FALSE}
+GrowthRateLight_cap<- glue("**Chlorophyll specific exponential growth rates (d^−1^) vs. cumulative diel photon dose (µmol photons m^−2^d^−1^).** Growth rates (+/- SE falling within symbols) were estimated from logistic fits of chlorophyll proxy OD~680~-OD~720~ vs. elapsed time (Fig. S4), for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) of *Synechococcus* sp. originating from the Baltic Sea. Cultures were grown at 30 (dark gray), 90 (light gray), 180 (purple), 300 (red), 600 (orange), or 900 (yellow) peak PAR µmol photons m^−2^s^−1^ (µE); and photoperiods of 8 (square), 12 (circle), 16 (triangle), or 24 (diamond) h. Solid blue line shows a fit of the pooled growth rates for each strain, with a three parameter model (Harrison and Platt, 1986). We also fit the same model separately for 30 (dark gray), 90 (light gray), 180 (purple), 300 (red), 600 together with 900 (orange) peak PAR µmol photons m^−2^s^−1^, only when they were significantly different (ANOVA, *p* < 0.05) from the fit of pooled data.", .sep = " ")
+knitr::include_graphics(file.path(FiguresFP,"SFig_GrowthRate_Light.png"))
+```
+
+```{r GrowthRatePUR, fig.cap = GrowthRatePUR_cap, fig.height = 8, fig.width = 6, echo = FALSE}
+GrowthRatePUR_cap<- glue("**Chlorophyll specific exponential growth rates (d^−1^) vs. cumulative diel PUR photon dose (µmol photons m^−2^d^−1^).** Growth rates (+/- SE falling within symbols) were estimated from logistic fits of chlorophyll proxy OD~680~-OD~720~ vs. elapsed time (Fig. S4), for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) of *Synechococcus* sp. originating from the Baltic Sea. Cultures were grown at 30 (dark gray), 90 (light gray), 180 (purple), 300 (red), 600 (orange), or 900 (yellow) peak PAR µmol photons m^−2^s^−1^ (µE); and photoperiods of 8 (square), 12 (circle), 16 (triangle), or 24 (diamond) h. Solid blue line shows a fit of the pooled growth rates for each strain, with a three parameter model (Harrison and Platt, 1986).", .sep = " ")
+knitr::include_graphics(file.path(FiguresFP,"SFig_GrowthRate_PUR.png"))
+```
+
+```{r AccLen, fig.cap = AccLen_cap, fig.height = 8, fig.width = 6, echo = FALSE}
+AccLen_cap<- glue("**Hours of photoperiod to reach maximum daily growth (h) vs. photoperiod (h).** Time-resolved growth was estimated over hourly intervals for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) of *Synechococcus* sp. originating from the Baltic Sea. Cultures were grown at 30 (dark gray), 90 (light gray), 180 (purple), 300 (red), or 900 (yellow) peak PAR µmol photons m^−2^s^−1^ (µE); and photoperiods of 8 (square), 12 (circle), or 16 (triangle) h. The diagonal dashed lines indicate the time (h) to reach the maximum light during the day. Figure presents data (small symbols) and means (big symbols) from exponential phase of growth, or from pre-stationary phase of growth, *n* = 1-5.", .sep = " ")
+knitr::include_graphics(file.path(FiguresFP,"SFig_AccLen.png"))
+```
+
+```{r PhycoChlaRatio, fig.cap = PhycoChlaRatio_cap, fig.height = 6, fig.width = 8, echo = FALSE}
+PhycoChlaRatio_cap<- glue("**Changes of total Phyco/Chl *a* ratio vs. cumulative diel photon dose (µmol photons m^−2^d^−1^).** Total Phyco/Chl *a* ratio was estimated for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) of *Synechococcus* sp. originating from the Baltic Sea. Cultures were grown at 30 (dark gray), 90 (light gray), 180 (purple), 300 (red), 600 (orange), or 900 (yellow) peak PAR µmol photons m^−2^s^−1^ (µE); and photoperiods of 8 (square), 12 (circle), 16 (triangle), or 24 (diamond) h. Figure presents data (small symbols) and means (big symbols) from exponential phase of growth, or from pre-stationary phase of growth. Blue solid line shows single phase exponential decay fit for data from each strain and growth phase, fit parameters are presented. Different lowercase letters indicate significant differences between the fit models for different strains within a given phase of growth. Different uppercase letters indicate significant differences between the fit models for different phases of growth within a given strain (ANOVA; *p* < 0.05).", .sep = " ")
+knitr::include_graphics(file.path(FiguresFP,"SFig_PhycoChlaRatio.png"))
+```
+
+
+```{r SigmaPig590dark, fig.cap = SigmaPig590dark_cap, fig.height = 6, fig.width = 8, echo = FALSE}
+SigmaPig590dark_cap<- glue("**Changes of effective absorption cross section of PSII** (\u03C3~PSII~; nm^2^ quanta^-1^) **measured at the dark period under Ex590 nm (orange) excitation vs. total Phyco/Chl *a* ratio.** Effective absorption cross section of PSII (\u03C3~PSII~; nm^2^ quanta^-1^) was estimated for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) of *Synechococcus* sp. originating from the Baltic Sea. Cultures were grown at 30 (dark gray), 90 (light gray), 180 (purple), 300 (red), 600 (orange), or 900 (yellow) peak PAR µmol photons m^−2^s^−1^ (µE); and photoperiods of 8 (square), 12 (circle), 16 (triangle), or 24 (diamond) h. Figure presents data (small symbols) and means (big symbols) from exponential phase of growth, or from pre-stationary phase of growth. Blue solid line shows linear model fit for data from each strain and growth phase. Different lowercase letters indicate significant differences between the fit models for different strains within a given phase of growth. Different uppercase letters indicate significant differences between the fit models for different phases of growth within a given strain (t-test; *p* < 0.05).", .sep = " ")
+knitr::include_graphics(file.path(FiguresFP,"SFig_SigmaPig590dark.png"))
+```
+
+```{r Sigma445, fig.cap = Sigma445_cap, fig.height = 8, fig.width = 6, echo = FALSE}
+Sigma445_cap<- glue("**Effective absorption cross section of PSII** (\u03C3~PSII~'; nm^2^ quanta^-1^) **measured under diel peak PAR growth light under Ex445 nm (blue) excitation vs. cumulative diel photon dose (µmol photons m^−2^d^−1^).** Effective absorption cross section of PSII (\u03C3~PSII~'; nm^2^ quanta^-1^) was estimated for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) of *Synechococcus* sp. originating from the Baltic Sea. Cultures were grown at 30 (dark gray), 90 (light gray), 180 (purple), 300 (red), 600 (orange), or 900 (yellow) peak PAR µmol photons m^−2^s^−1^ (µE); and photoperiods of 8 (square), 12 (circle), 16 (triangle), or 24 (diamond) h. Figure presents data (small symbols) and means (big symbols) from exponential phase of growth, or from pre-stationary phase of growth. Blue solid line shows linear model fit for data from each strain and growth phase. Different lowercase letters indicate significant differences between the fit models for different strains within a given phase of growth. Different uppercase letters indicate significant differences between the fit models for different phases of growth within a given strain (t-test; *p* < 0.05).", .sep = " ")
+knitr::include_graphics(file.path(FiguresFP,"SFig_Sigma445.png"))
+```
+
+
+```{r SigmaPig445, fig.cap = SigmaPig445_cap, fig.height = 8, fig.width = 6, echo = FALSE}
+SigmaPig445_cap<- glue("**Changes of effective absorption cross section of PSII** (\u03C3~PSII~'; nm^2^ quanta^-1^) **measured under diel peak PAR growth light under Ex445 nm (blue) excitation vs. total Phyco/Chl *a* ratio.** Effective absorption cross section of PSII (\u03C3~PSII~'; nm^2^ quanta^-1^) was estimated for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) of *Synechococcus* sp. originating from the Baltic Sea. Cultures were grown at 30 (dark gray), 90 (light gray), 180 (purple), 300 (red), 600 (orange), or 900 (yellow) peak PAR µmol photons m^−2^s^−1^ (µE); and photoperiods of 8 (square), 12 (circle), 16 (triangle), or 24 (diamond) h. Figure presents data (small symbols) and means (big symbols) from exponential phase of growth, or from pre-stationary phase of growth. Blue solid line shows linear model fit for data from each strain and growth phase. Different lowercase letters indicate significant differences between the fit models for different strains within a given phase of growth. Different uppercase letters indicate significant differences between the fit models for different phases of growth within a given strain (t-test; *p* < 0.05).", .sep = " ")
+knitr::include_graphics(file.path(FiguresFP,"SFig_SigmaPig445.png"))
+```
+
+
+```{r locally stored metadata from rds, echo = FALSE}
+# https://davidgohel.github.io/flextable/reference/index.html
+
+# BalticPhotoperiod_Tab_PigmentsCorrelation.Rds
+# BalticPhotoperiod_Tab_GrowthCorrelation.Rds
+
+# BalticPhotoperiod_Anova_GrowthRate.Rds
+# BalticPhotoperiod_Anova_GrowthRate_Model_Light.Rds
+# BalticPhotoperiod_Anova_GrowthRate_Model_Photoperiod.Rds
+
+# BalticPhotoperiod_Anova_GS.Rds
+# BalticPhotoperiod_Anova_GS_Model.Rds
+
+# BalticPhotoperiod_Anova_PhycoChlaRatio.Rds
+# BalticPhotoperiod_Anova_PhycoChlaRatio_Model.Rds
+
+# BalticPhotoperiod_Anova_PURPARRatio.Rds
+# BalticPhotoperiod_Anova_PURPARRatio_Model.Rds
+
+# BalticPhotoperiod_Anova_Sig445.Rds
+# BalticPhotoperiod_Anova_Sig445_Model.Rds
+
+# BalticPhotoperiod_Anova_Sig590.Rds
+# BalticPhotoperiod_Anova_Sig590_Model.Rds
+
+# BalticPhotoperiod_Anova_SigPig445.Rds
+# BalticPhotoperiod_Anova_SigPig445_Model.Rds
+
+# BalticPhotoperiod_Anova_SigPig590.Rds
+# BalticPhotoperiod_Anova_SigPig590_Model.Rds
+
+```
+
+```{r echo = FALSE}
+GrowthCorrelation <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Tab_GrowthCorrelation.Rds"))
+GrowthCorrelation<-GrowthCorrelation %>% 
+  relocate(Strain, .before = Linear_regression) %>% 
+  relocate(OD, .before = Linear_regression) 
+
+myft <- flextable(GrowthCorrelation)
+myft <- set_caption(myft, caption = "Linear regression, coefficient of determination (R square), Pearson correlation coefficients (R), and p-value used to calculate the number of cells (N mL-1) of two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp. based on optical density (OD) measurements.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(GrowthCorrelation)
+```
+
+```{r echo = FALSE}
+PigmentsCorrelation <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Tab_PigmentsCorrelation.Rds"))
+PigmentsCorrelation<-PigmentsCorrelation %>%  
+  relocate(Pigment, .before = Linear_regression) %>%
+  relocate(Abs, .before = Linear_regression)
+
+myft <- flextable(PigmentsCorrelation)
+myft <- set_caption(myft, caption = "Linear regression, coefficient of determination (R square), Pearson correlation coefficients (R), and p-value used to calculate the pigment content (µg mL-1) of two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp. based on absorbance (Abs) measurements.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(PigmentsCorrelation)
+```
+
+```{r echo = FALSE}
+Anova_GrowthRate <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_GrowthRate.Rds"))
+Anova_GrowthRate<-Anova_GrowthRate
+df <- data.frame(Source_of_variation = c("Par_ue", "Photoperiod", "Strain", "Par_ue:Photoperiod", "Par_ue:Strain", "Photoperiod:Strain", "Par_ue:Photoperiod:Strain", "Residuals"))
+Anova_GrowthRate<-cbind(df, Anova_GrowthRate) 
+Anova_GrowthRate<-Anova_GrowthRate %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  mutate(Df=as.character(Df))
+
+
+myft <- flextable(Anova_GrowthRate) 
+myft <- set_caption(myft, caption = "Three-way factorial ANOVA of chlorophyll specific exponential growth rate (Source_of_variation), estimated from logistic fits of chlorophyll proxy OD680-OD720 vs. elapsed time, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Df – degrees of freedom; Sum Sq – sum of squares; Mean Sq – mean sum of squares; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_GrowthRate, df)
+```
+
+
+```{r echo = FALSE}
+GrowthRate_Model_Photoperiod <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_GrowthRate_Model_Photoperiod.Rds"))
+GrowthRate_Model_Photoperiod<-GrowthRate_Model_Photoperiod %>% 
+  select(-c("Df", "Sum Sq")) %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  rename(Fit_model = "FitComparison") %>% 
+  relocate(Fit_model, .before = Res.Df) %>% 
+  relocate(Strain, .before = Fit_model) %>% 
+  mutate(Res.Df=as.character(Res.Df))
+  
+myft <- flextable(GrowthRate_Model_Photoperiod)
+myft <- set_caption(myft, caption = "One-way ANOVA of a three parameter model (Harrison and Platt, 1986) (Fit_model) from pooled data (All) and data fit across different photoperiods (8, 12, 16, or 24) from chlorophyll specific exponential growth rate, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Res.Df - residual degrees of freedom for each model; Res.Sum Sq - residual sum of squares for each model; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(GrowthRate_Model_Photoperiod)
+```
+
+```{r echo = FALSE}
+Anova_GrowthRate_Model_Light <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_GrowthRate_Model_Light.Rds"))
+Anova_GrowthRate_Model_Light<-Anova_GrowthRate_Model_Light %>% 
+  select(-c("Df", "Sum Sq")) %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  rename(Fit_model = "FitComparison") %>% 
+  relocate(Fit_model, .before = Res.Df) %>% 
+  relocate(Strain, .before = Fit_model) %>% 
+  mutate(Res.Df=as.character(Res.Df))
+
+
+myft <- flextable(Anova_GrowthRate_Model_Light)
+myft <- set_caption(myft, caption = "One-way ANOVA of a three parameter model (Harrison and Platt, 1986) (Fit_model) from pooled data (All) and data fit across different peak PAR (30, 90, 180, 300, 600 together with 900) from chlorophyll specific exponential growth rate, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Res.Df - residual degrees of freedom for each model; Res.Sum Sq - residual sum of squares for each model; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_GrowthRate_Model_Light)
+```
+
+```{r echo = FALSE}
+Anova_GS <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_GS.Rds"))
+Anova_GS<-Anova_GS
+df <- data.frame(Source_of_variation = c("PhotonDose_day", "Phase", "Strain", "PhotonDose_day:Phase", "PhotonDose_day:Strain", "Phase:Strain", "PhotonDose_day:Phase:Strain", "Residuals"))
+Anova_GS<-cbind(df, Anova_GS) 
+Anova_GS<-Anova_GS %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  mutate(Df=as.character(Df))
+
+
+myft <- flextable(Anova_GS)
+myft <- set_caption(myft, caption = "Three-way factorial ANOVA of index of diel growth symmetry; AccLen/DecLen ratio (Source_of_variation), for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, or 16 h. Df – degrees of freedom; Sum Sq – sum of squares; Mean Sq – mean sum of squares; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_GS, df)
+```
+
+```{r echo = FALSE}
+Anova_GS_Model <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_GS_Model.Rds"))
+Anova_GS_Model<-Anova_GS_Model %>% 
+  select(-c("Df", "Sum Sq")) %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  rename(Fit_model = "FitComparison") %>% 
+  relocate(Fit_model, .before = Res.Df) %>% 
+  mutate(Res.Df=as.character(Res.Df))
+  
+
+myft <- flextable(Anova_GS_Model)
+myft <- set_caption(myft, caption = "One-way ANOVA of single phase exponential decay fit model (Fit_model) of pooled data across different strains for a given phase of growth (exponential; _Exp, pre-stationary; _St) and across different phase of growth for a given strain (_Exp_St) from index of diel growth symmetry; AccLen/DecLen ratio, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, or 16 h. Res.Df - residual degrees of freedom for each model; Res.Sum Sq - residual sum of squares for each model; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_GS_Model)
+```
+
+```{r echo = FALSE}
+Anova_PURPARRatio <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_PURPARRatio.Rds"))
+Anova_PURPARRatio<-Anova_PURPARRatio
+df <- data.frame(Source_of_variation = c("PhotonDose_day", "Phase", "Strain", "PhotonDose_day:Phase", "PhotonDose_day:Strain", "Phase:Strain", "PhotonDose_day:Phase:Strain", "Residuals"))
+Anova_PURPARRatio<-cbind(df, Anova_PURPARRatio) 
+Anova_PURPARRatio<-Anova_PURPARRatio %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  mutate(Df=as.character(Df))
+
+
+myft <- flextable(Anova_PURPARRatio)
+myft <- set_caption(myft, caption = "Three-way factorial ANOVA of PUR/PAR ratio (Source_of_variation), for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Df – degrees of freedom; Sum Sq – sum of squares; Mean Sq – mean sum of squares; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_PURPARRatio, df)
+```
+
+```{r echo = FALSE}
+Anova_PURPARRatio_Model <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_PURPARRatio_Model.Rds"))
+Anova_PURPARRatio_Model<-Anova_PURPARRatio_Model %>% 
+  select(-c("Df", "Sum Sq")) %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  rename(Fit_model = "FitComparison") %>% 
+  relocate(Fit_model, .before = Res.Df) %>% 
+  mutate(Res.Df=as.character(Res.Df))
+  
+
+myft <- flextable(Anova_PURPARRatio_Model)
+myft <- set_caption(myft, caption = "One-way ANOVA of single phase exponential decay fit model (Fit_model) of pooled data across different strains for a given phase of growth (exponential; _Exp, pre-stationary; _St) and across different phase of growth for a given strain (_Exp_St) from PUR/PAR ratio, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Res.Df - residual degrees of freedom for each model; Res.Sum Sq - residual sum of squares for each model; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_PURPARRatio_Model)
+```
+
+```{r echo = FALSE}
+Anova_PhycoChlaRatio <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_PhycoChlaRatio.Rds"))
+Anova_PhycoChlaRatio<-Anova_PhycoChlaRatio
+df <- data.frame(Source_of_variation = c("PhotonDose_day", "Phase", "Strain", "PhotonDose_day:Phase", "PhotonDose_day:Strain", "Phase:Strain", "PhotonDose_day:Phase:Strain", "Residuals"))
+Anova_PhycoChlaRatio<-cbind(df, Anova_PhycoChlaRatio) 
+Anova_PhycoChlaRatio<-Anova_PhycoChlaRatio %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  mutate(Df=as.character(Df))
+
+
+myft <- flextable(Anova_PhycoChlaRatio)
+myft <- set_caption(myft, caption = "Three-way factorial ANOVA of total Phyco/Chl a ratio (Source_of_variation), for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Df – degrees of freedom; Sum Sq – sum of squares; Mean Sq – mean sum of squares; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_PhycoChlaRatio, df)
+```
+
+```{r echo = FALSE}
+Anova_PhycoChlaRatio_Model <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_PhycoChlaRatio_Model.Rds"))
+Anova_PhycoChlaRatio_Model<-Anova_PhycoChlaRatio_Model %>% 
+  select(-c("Df", "Sum Sq")) %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  rename(Fit_model = "FitComparison") %>% 
+  relocate(Fit_model, .before = Res.Df) %>% 
+  mutate(Res.Df=as.character(Res.Df))
+  
+
+myft <- flextable(Anova_PhycoChlaRatio_Model)
+myft <- set_caption(myft, caption = "One-way ANOVA of single phase exponential decay fit model (Fit_model) of pooled data across different strains for a given phase of growth (exponential; _Exp, pre-stationary; _St) and across different phase of growth for a given strain (_Exp_St) from total Phyco/Chl a ratio, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Res.Df - residual degrees of freedom for each model; Res.Sum Sq - residual sum of squares for each model; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_PhycoChlaRatio_Model)
+```
+
+```{r echo = FALSE}
+Anova_Sig445 <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_Sig445.Rds"))
+Anova_Sig445<-Anova_Sig445
+df <- data.frame(Source_of_variation = c("PhotonDose_day", "Phase", "Strain", "PhotonDose_day:Phase", "PhotonDose_day:Strain", "Phase:Strain", "PhotonDose_day:Phase:Strain", "Residuals"))
+Anova_Sig445<-cbind(df, Anova_Sig445) 
+Anova_Sig445<-Anova_Sig445 %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  mutate(Df=as.character(Df))
+
+
+myft <- flextable(Anova_Sig445)
+myft <- set_caption(myft, caption = "Three-way factorial ANOVA of effective absorption cross section of PSII (σPSII’; nm2 quanta-1) measured under diel peak PAR growth light under Ex445 nm (blue) excitation (Source_of_variation), for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Df – degrees of freedom; Sum Sq – sum of squares; Mean Sq – mean sum of squares; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_Sig445, df)
+```
+
+```{r echo = FALSE}
+Anova_Sig445_Model <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_Sig445_Model.Rds"))
+Anova_Sig445_Model<-Anova_Sig445_Model %>% 
+  rename(Fit_model = "FitComparison") %>% 
+  relocate(Fit_model, .before = Estimate) 
+
+
+myft <- flextable(Anova_Sig445_Model)
+myft <- set_caption(myft, caption = "T-test of linear fit model (Fit_model) of pooled data across different strains for a given phase of growth (exponential; _Exp, pre-stationary; _St) and across different phase of growth for a given strain (_Exp_St) from effective absorption cross section of PSII (σPSII’; nm2 quanta-1) measured under diel peak PAR growth light under Ex445 nm (blue) excitation, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Estimate - estimation statistics; Std.Error - standard error of the estimate; t_value – t-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- set_formatter(myft, Estimate = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- set_formatter(myft, Std.Error = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_Sig445_Model)
+```
+
+```{r echo = FALSE}
+Anova_Sig590 <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_Sig590.Rds"))
+Anova_Sig590<-Anova_Sig590
+df <- data.frame(Source_of_variation = c("PhotonDose_day", "Phase", "Strain", "PhotonDose_day:Phase", "PhotonDose_day:Strain", "Phase:Strain", "PhotonDose_day:Phase:Strain", "Residuals"))
+Anova_Sig590<-cbind(df, Anova_Sig590) 
+Anova_Sig590<-Anova_Sig590 %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  mutate(Df=as.character(Df))
+
+
+myft <- flextable(Anova_Sig590)
+myft <- set_caption(myft, caption = "Three-way factorial ANOVA of effective absorption cross section of PSII (σPSII’; nm2 quanta-1) measured under diel peak PAR growth light under Ex590 nm (orange) excitation (Source_of_variation), for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Df – degrees of freedom; Sum Sq – sum of squares; Mean Sq – mean sum of squares; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_Sig590, df)
+```
+
+```{r echo = FALSE}
+Anova_Sig590_Model <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_Sig590_Model.Rds"))
+Anova_Sig590_Model<-Anova_Sig590_Model %>% 
+  select(-c("Df", "Sum Sq")) %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  rename(Fit_model = "FitComparison") %>% 
+  relocate(Fit_model, .before = Res.Df) %>% 
+  mutate(Res.Df=as.character(Res.Df))
+  
+
+myft <- flextable(Anova_Sig590_Model)
+myft <- set_caption(myft, caption = "One-way ANOVA of single phase exponential decay fit model (Fit_model) of pooled data across different strains for a given phase of growth (exponential; _Exp, pre-stationary; _St) and across different phase of growth for a given strain (_Exp_St) from effective absorption cross section of PSII (σPSII’; nm2 quanta-1) measured under diel peak PAR growth light under Ex590 nm (orange) excitation, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Res.Df - residual degrees of freedom for each model; Res.Sum Sq - residual sum of squares for each model; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_Sig590_Model)
+```
+
+```{r echo = FALSE}
+Anova_SigPig445 <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_SigPig445.Rds"))
+Anova_SigPig445<-Anova_SigPig445
+df <- data.frame(Source_of_variation = c("PhotonDose_day", "Phase", "Strain", "PhotonDose_day:Phase", "PhotonDose_day:Strain", "Phase:Strain", "PhotonDose_day:Phase:Strain", "Residuals"))
+Anova_SigPig445<-cbind(df, Anova_SigPig445) 
+Anova_SigPig445<-Anova_SigPig445 %>% 
+  rename(p_value = "Pr(>F)") %>% 
+  rename(F_value = "F value") %>% 
+  mutate(Df=as.character(Df))
+
+
+myft <- flextable(Anova_SigPig445)
+myft <- set_caption(myft, caption = "Three-way factorial ANOVA of effective absorption cross section of PSII (σPSII’; nm2 quanta-1) measured under diel peak PAR growth light under Ex445 nm (blue) excitation in relation to the total Phyco/Chl a ratio (Source_of_variation), for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Df – degrees of freedom; Sum Sq – sum of squares; Mean Sq – mean sum of squares; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_SigPig445, df)
+```
+
+```{r echo = FALSE}
+Anova_SigPig445_Model <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_SigPig445_Model.Rds"))
+Anova_SigPig445_Model<-Anova_SigPig445_Model %>% 
+  rename(Fit_model = "FitComparison") %>% 
+  relocate(Fit_model, .before = Estimate) 
+  
+
+myft <- flextable(Anova_SigPig445_Model)
+myft <- set_caption(myft, caption = "T-test of linear fit model (Fit_model) of pooled data across different strains for a given phase of growth (exponential; _Exp, pre-stationary; _St) and across different phase of growth for a given strain (_Exp_St) from effective absorption cross section of PSII (σPSII’; nm2 quanta-1) measured under diel peak PAR growth light under Ex445 nm (blue) excitation in relation to the total Phyco/Chl a ratio, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Estimate - estimation statistics; Std.Error - standard error of the estimate; t_value – t-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_SigPig445_Model)
+```
+
+
+```{r echo = FALSE}
+Anova_SigPig590 <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_SigPig590.Rds"))
+Anova_SigPig590<-Anova_SigPig590
+df <- data.frame(Source_of_variation = c("PhotonDose_day", "Phase", "Strain", "PhotonDose_day:Phase", "PhotonDose_day:Strain", "Phase:Strain", "PhotonDose_day:Phase:Strain", "Residuals"))
+Anova_SigPig590<-cbind(df, Anova_SigPig590)
+Anova_SigPig590<-Anova_SigPig590 %>% 
+  rename(p_value = "Pr(>F)") %>%
+  rename(F_value = "F value") %>% 
+  mutate(Df=as.character(Df))
+
+
+myft <- flextable(Anova_SigPig590)
+myft <- set_caption(myft, caption = "Three-way factorial ANOVA of effective absorption cross section of PSII (σPSII’; nm2 quanta-1) measured under diel peak PAR growth light under Ex590 nm (orange) excitation in relation to the total Phyco/Chl a ratio, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Df – degrees of freedom; Sum Sq – sum of squares; Mean Sq – mean sum of squares; F_value – Fisher's F-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_SigPig590, df)
+```
+
+```{r echo = FALSE}
+Anova_SigPig590_Model <- readRDS(file = file.path("..", "Output", "TablesRds", "BalticPhotoperiod_Anova_SigPig590_Model.Rds"))
+Anova_SigPig590_Model<-Anova_SigPig590_Model %>% 
+  rename(Fit_model = "FitComparison") %>% 
+  relocate(Fit_model, .before = Estimate) 
+  
+
+myft <- flextable(Anova_SigPig590_Model)
+myft <- set_caption(myft, caption = "T-test of linear fit model (Fit_model) of pooled data across different strains for a given phase of growth (exponential; _Exp, pre-stationary; _St) and across different phase of growth for a given strain (_Exp_St) from effective absorption cross section of PSII (σPSII’; nm2 quanta-1) measured under diel peak PAR growth light under Ex590 nm (orange) excitation in relation to the total Phyco/Chl a ratio, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of Synechococcus sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Estimate - estimation statistics; Std.Error - standard error of the estimate; t_value – t-test statistic; p_value - level of significance.")
+myft <- colformat_double(x = myft, big.mark = ",", digits = 3, na_str = "N/A")
+myft <- set_formatter(myft, F_value = function(x) {formatC(x, format = "e", digits = 3)})
+myft <- fontsize(myft, size = 12, part = "header")
+myft <- fontsize(myft, size = 10, part = "body")
+myft <- align(myft, align = "left", part = "all")
+myft <- autofit(myft)
+myft
+
+rm(Anova_SigPig590_Model)
+```
+
+
+
+
+
+```{r echo = FALSE}
+# myft <- flextable(Anova_GrowthRate) %>% 
+# set_caption(caption = as_paragraph(
+#       as_chunk("Three-way factorial ANOVA of chlorophyll specific exponential growth rate, estimated from logistic fits of chlorophyll proxy OD680-OD720 vs. elapsed time, for two PhycoCyanin(PC)-rich cultures (056, 077) and two PhycoErythrin(PE)-rich cultures (048, 127) (Culture Collection of Baltic Algae) of", 
+#                props = fp_text_default(font.family = "Courier", italic = FALSE)),
+#       as_chunk(" Synechococcus", 
+#                props = fp_text_default(font.family = "Courier", italic = TRUE)),
+#       as_chunk(" sp., grown at 30, 90, 180, 300, 600, or 900 peak PAR µmol photons m−2s−1; and photoperiods of 8, 12, 16, or 24 h. Df – degrees of freedom; Sum Sq – sum of squares; Mean Sq – mean sum of squares; F_value – Fisher's F-test statistic; p_value - level of significance.", 
+#                props = fp_text_default(font.family = "Courier", italic = FALSE))))
+# myft
+```
+
+
+

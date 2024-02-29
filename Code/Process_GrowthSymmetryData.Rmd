@@ -1,0 +1,797 @@
+---
+title: "Process_GrowthSymmetryData"
+author:
+- Sylwia Sliwinska-Wilczewska
+- Douglas A. Campbell
+date: "`r format(Sys.Date())`"
+output:
+bookdown::html_document2:
+    code_folding: show
+    keep_md: yes
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 6
+    fig_caption: yes
+bibliography: BalticPhotoperiod.bib
+csl: plos-one.csl
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Set Chunk Options
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+knitr::opts_chunk$set(fig.path='Figs/')
+```
+
+# Introduction
+
+Process_GrowthSymmetryData.Rmd processes Growth Symmetry (GS) catalog from a google sheet. This .Rmd generates BalticPhotoperiod_Processed_GrowthSymmetryData.Rds (stored in Data/ProcessedData/ProcessedGrowthSymmetryData folder) and 4 plots (stored in Output/Figures folder).
+
+# Load Libraries and set Project Variables
+
+```{r load libraries, warning = FALSE, echo=FALSE} 
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(broom)
+library(knitr)
+library(OneR)
+library(zoo)
+library(strucchange)
+library(magrittr)
+library(googledrive)
+library(googlesheets4)
+library(readxl)
+library(stringi)
+```
+
+```{r set project variables}
+Project <- "BalticPhotoperiod"
+DataOut <- file.path("..", "Data", "ProcessedData", "ProcessedGrowthSymmetryData")
+
+FigPath <- file.path("..", "Output", "Figures")
+FigRdsPath <- file.path("..", "Output", "FiguresRds")
+TableRdsPath <- file.path("..", "Output", "TablesRDS")
+
+FileID <- "Smooth"
+FileEncode <- "UTF-8" 
+Delimiter <- ""
+HeaderRows <- 0
+```
+
+# Read MetaData
+
+```{r read locally stored metadata from rds}
+CultureCatalog <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedMetaData", "CultureCatalog.Rds"))
+
+CultureCatalog<-CultureCatalog %>% 
+  select(-c(PrimaryOperator, Temp_c, ExpCul, ExpStartTime, O2_Category, Optode, OptodeCh, OptodeMeasure))
+```
+
+# Read Growth Symmetry (GS) catalog
+
+```{r load local GS catalog, results = "hide", message = FALSE, warning = FALSE, echo=FALSE}
+gs4_deauth()
+# this is the URL or ID of a Sheet readable by anyone (with a link)
+GScatalog<- read_sheet("https://docs.google.com/spreadsheets/d/1zqH6iYlqMPigyloLKJPeVWugmcnmgJ-eMU3gLkR6FSU/edit#gid=0")
+
+as.data.frame(GScatalog)
+GScatalog <- GScatalog 
+```
+
+# Preparing df for further analysis
+
+```{r prepare data - mutate as numeric, calculate AccLen, DecLen, GS (growth symmetry)}
+GScatalog <- GScatalog %>% 
+  mutate(Acc_perc = as.numeric(Acc_perc)) %>% 
+  mutate(Dec_perc = as.numeric(Dec_perc)) %>% 
+  mutate(AccDecRatio_perc = Acc_perc/Dec_perc) %>% 
+  mutate(Par_ue = as.numeric(Par_ue)) %>% 
+  mutate(Photoperiod = as.numeric(Photoperiod)) %>%
+  mutate(tMaxAG = as.numeric(tMaxAG)) %>%
+  mutate(tMaxDG = as.numeric(tMaxDG)) %>%
+  mutate(PhotoperiodTstart_h=as.numeric(PhotoperiodTstart_h)) %>% 
+  mutate(PhotoperiodTend_h=as.numeric(PhotoperiodTend_h)) %>% 
+  mutate(AccLen = tMaxDG-PhotoperiodTstart_h) %>% 
+  mutate(DecLen = PhotoperiodTend_h-tMaxDG) %>% 
+  mutate(GS = AccLen/DecLen) %>% 
+  mutate(TDG = as.numeric(TDG)) 
+```
+
+# Merge GS catalog with MetaData
+
+```{r merge GS catalog with MetaData, warning = FALSE, echo=FALSE}
+GScatalogMeta <- CultureCatalog %>%
+  left_join(., GScatalog, by = c("Strain" = "Strain", "Photoperiod"="Photoperiod", "Par_ue"="Par_ue","WL"="WL", "O2"="O2")) 
+```
+
+# Filtering unrelated values and outliers
+
+```{r cleaning unrelated values and outliers}
+GScatalogMeta<-GScatalogMeta %>% 
+  filter(Photoperiod!=24) %>% 
+  filter(AccDecRatio_perc<10)
+  
+GScatalogMeta1 <-GScatalogMeta %>% 
+  filter(PARPhotonDose_day>=19440000) %>% 
+  filter(GS<=2)
+GScatalogMeta2 <-GScatalogMeta %>% 
+  filter(PARPhotonDose_day<19440000) %>% 
+filter(GS<4)
+
+GScatalogMeta<-rbind(GScatalogMeta1,GScatalogMeta2)
+rm(GScatalogMeta1,GScatalogMeta2)
+```
+
+# Calculate mean of GS from every day (every peak in exp and pre-stationary phase)
+
+```{r calculate mean of GS, warning = FALSE}
+GScatalogMeta<-GScatalogMeta %>% 
+  group_by(Strain, Photoperiod, Par_ue, Phase) %>%
+  summarize(Run, SampleID, Strain, ExpDate, Par_ue, Photoperiod, PARPhotonDose_day, MC, Tube, O2, LightShape, ExpEndDate, PhotoperiodTstart_h, PhotoperiodTend_h,tMaxDG,tMaxAG, Phase, AchivePreStationary, MaxDG, MaxAG, Acc_perc, Dec_perc, Strain, Par_ue, Photoperiod, O2, WL, OD680start, OD680end, TDG, AccDecRatio_perc, AccLen, DecLen, GS, 
+            meanAccLen = mean(AccLen), 
+            sdAccLen = sd(AccLen),
+            meanDecLen = mean(DecLen), 
+            sdDecLen = sd(DecLen),
+            meanGS = mean(GS), 
+            sdGS = sd(GS)) %>%  
+  ungroup() 
+```
+# Rename strain names, create facets labels, and create horizontal lines for plot
+
+```{r rename strain names for plot}
+GScatalogMeta<-GScatalogMeta %>% 
+    mutate(Strain=case_when(Strain=="BA127R"~"PE-rich_127",
+         Strain=="BA48R"~"PE-rich_048",
+        Strain=="BA56G"~"PC-rich_056",
+         Strain=="BA77G"~"PC-rich_077"))
+```
+
+```{r create facets labels for plot}
+GScatalogMeta$facetsPar_ue = factor(GScatalogMeta$O2, labels = c("PAR~(µmol~photons~m^{-2}~s^{-1})"))
+GScatalogMeta$facetsPhotoperiod = factor(GScatalogMeta$WL, labels = c("Photoperiod~(h)"))
+GScatalogMeta$facetsStrain = factor(GScatalogMeta$O2, labels = c("Strain"))
+GScatalogMeta$facetsPhase = factor(GScatalogMeta$WL, labels = c("Phase~of~growth"))
+```
+
+```{r create df to show hline}
+data_hlineGS8 <- data.frame(Photoperiod= c(8),facets2= c("Photoperiod~(h)"),value = c(4))
+data_hlineGS12 <- data.frame(Photoperiod= c(12),facets2= c("Photoperiod~(h)"),value = c(6))
+data_hlineGS16 <- data.frame(Photoperiod= c(16),facets2= c("Photoperiod~(h)"),value = c(8))
+```
+
+# Filter 3 data points from stationary phase
+
+```{r}
+GScatalogMeta_1<-GScatalogMeta %>%
+  filter(Phase == "Pre-stationary") %>%
+  filter(Strain != "PE-rich_127")
+GScatalogMeta_2<-GScatalogMeta %>%
+  filter(Phase == "Pre-stationary") %>%
+  filter(Strain == "PE-rich_127") %>%
+  filter(Par_ue ==300) %>%
+  filter(GS < 0.65)
+GScatalogMeta_3<-GScatalogMeta %>%
+  filter(Phase == "Pre-stationary") %>%
+  filter(Strain == "PE-rich_127") %>%
+  filter(Par_ue ==90| Par_ue ==180 | Par_ue ==900)
+GScatalogMeta_4<-GScatalogMeta %>%
+  filter(Phase == "Exponential")
+GScatalogMetaFit<-rbind(GScatalogMeta_1, GScatalogMeta_2, GScatalogMeta_3, GScatalogMeta_4)
+  rm(GScatalogMeta_1, GScatalogMeta_2, GScatalogMeta_3, GScatalogMeta_4)
+```
+
+# Fit the data to exponential decays
+
+```{r fitting exponential decays, warning = FALSE}
+GScatalogMetaExpSt <-GScatalogMetaFit %>% 
+  drop_na(GS) %>%
+  #filter(Phase == "Exponential") %>% 
+  select(c(GS, PARPhotonDose_day, Strain, Phase, O2, WL)) 
+
+# Fit the data
+fitted <- GScatalogMetaExpSt %>% 
+  nest(-c(Strain, Phase, O2, WL)) %>%
+  mutate(
+    fit = map(data, ~nls(GS ~ SSasymp(PARPhotonDose_day, yf, y0, log_alpha), data = .)),
+    tidied = map(fit, tidy),
+    augmented = map(fit, augment)) 
+
+# Produce a table of fit parameters: y0, yf, alpha
+fitted_GS_Param<-fitted %>% 
+  unnest(tidied) %>% 
+  select(Strain, Phase, term, estimate) %>% 
+pivot_wider(., names_from = c(term), values_from = c(estimate)) %>% 
+  mutate(alpha = exp(log_alpha)) 
+
+augmented<-fitted  %>%
+  unnest(augmented) %>%
+  select(c(Strain, Phase, O2, WL, PARPhotonDose_day,GS, .fitted)) 
+
+```
+
+# Create GS and AccLen plots
+
+```{r create GS plot, fig.height = 8, fig.width = 8, warning = FALSE}
+
+data_text_y0Exp<- data.frame(WL = c("WW", "WW"), Phase = c("Exponential"), O2=c(21, 21, 21, 21), Strain  = c("PC-rich_056", "PC-rich_077", "PE-rich_048", "PE-rich_127"),  label = c('y0 = 2.6', 'y0 = 1.6', 'y0 = 1.2', 'y0 = 1.4'))
+data_text_yfExp<- data.frame(WL = c("WW", "WW"), Phase = c("Exponential"), O2=c(21, 21, 21, 21), Strain  = c("PC-rich_056", "PC-rich_077", "PE-rich_048", "PE-rich_127"),  label = c('yf = 0.8', 'yf = 0.5', 'yf = 0.3', 'yf = 0.5'))
+data_text_lambdaExp<- data.frame(WL = c("WW", "WW"), Phase = c("Exponential"), O2=c(21, 21, 21, 21), Strain  = c("PC-rich_056", "PC-rich_077", "PE-rich_048", "PE-rich_127"),  label = c('\u03BB = 3.4e-07', '\u03BB = 1.7e-07', '\u03BB = 1.2e-07', '\u03BB = 2.1e-07'))
+
+data_text_y0St<- data.frame(WL = c("WW", "WW"), Phase = c("Pre-stationary"), O2=c(21, 21, 21, 21), Strain  = c("PC-rich_056", "PC-rich_077", "PE-rich_048", "PE-rich_127"),  label = c('y0 = NA', '  y0 = 3.8', 'y0 = 0.6', 'y0 = 0.6'))
+data_text_yfSt<- data.frame(WL = c("WW", "WW"), Phase = c("Pre-stationary"), O2=c(21, 21, 21, 21), Strain  = c("PC-rich_056", "PC-rich_077", "PE-rich_048", "PE-rich_127"),  label = c('yf = 0.7', 'yf = 0.4', 'yf = 0.3', 'yf = 0.2'))
+data_text_lambdaSt<- data.frame(WL = c("WW", "WW"), Phase = c("Pre-stationary"), O2=c(21, 21, 21, 21), Strain  = c("PC-rich_056", "PC-rich_077", "PE-rich_048", "PE-rich_127"),  label = c('\u03BB = NA', '     \u03BB = 1.8e-06', '     \u03BB = 7.8e-08', '     \u03BB = 6.3e-08'))
+
+# data_text_AnovaExp<- data.frame(WL = c("WW", "WW"), Phase = c("Exponential"), O2=c(21, 21, 21, 21), Strain  = c("PC-rich_056", "PC-rich_077", "PE-rich_048", "PE-rich_127"),  label = c('ANOVA, \u03B1 = 0.05, a', 'ANOVA, \u03B1 = 0.05, a', 'ANOVA, \u03B1 = 0.05, b', ' ANOVA, \u03B1 = 0.05, ab'))
+
+data_text_AnovaExp56<- data.frame(WL = c("WW"), Phase = c("Exponential"), O2=c(21), Strain  = c("PC-rich_056"),  label = c('a'))
+data_text_AnovaExp77<- data.frame(WL = c("WW"), Phase = c("Exponential"), O2=c(21), Strain  = c("PC-rich_077"),  label = c("a"))
+data_text_AnovaExp48<- data.frame(WL = c("WW"), Phase = c("Exponential"), O2=c(21), Strain  = c("PE-rich_048"),  label = c("b"))
+data_text_AnovaExp127<- data.frame(WL = c("WW"), Phase = c("Exponential"), O2=c(21), Strain  = c("PE-rich_127"),  label = c("ab"))
+
+data_text_AnovaSt56<- data.frame(WL = c("WW"), Phase = c("Pre-stationary"), O2=c(21), Strain  = c("PC-rich_056"),  label = c('a'))
+data_text_AnovaSt77<- data.frame(WL = c("WW"), Phase = c("Pre-stationary"), O2=c(21), Strain  = c("PC-rich_077"),  label = c("ab"))
+data_text_AnovaSt48<- data.frame(WL = c("WW"), Phase = c("Pre-stationary"), O2=c(21), Strain  = c("PE-rich_048"),  label = c("ab"))
+data_text_AnovaSt127<- data.frame(WL = c("WW"), Phase = c("Pre-stationary"), O2=c(21), Strain  = c("PE-rich_127"),  label = c("b"))
+
+data_text_AnovaExp56P<- data.frame(WL = c("WW"), Phase = c("Exponential"), O2=c(21), Strain  = c("PC-rich_056"),  label = c('A'))
+data_text_AnovaExp77P<- data.frame(WL = c("WW"), Phase = c("Exponential"), O2=c(21), Strain  = c("PC-rich_077"),  label = c("A"))
+data_text_AnovaExp48P<- data.frame(WL = c("WW"), Phase = c("Exponential"), O2=c(21), Strain  = c("PE-rich_048"),  label = c("A"))
+data_text_AnovaExp127P<- data.frame(WL = c("WW"), Phase = c("Exponential"), O2=c(21), Strain  = c("PE-rich_127"),  label = c("A"))
+
+data_text_AnovaSt56P<- data.frame(WL = c("WW"), Phase = c("Pre-stationary"), O2=c(21), Strain  = c("PC-rich_056"),  label = c('B'))
+data_text_AnovaSt77P<- data.frame(WL = c("WW"), Phase = c("Pre-stationary"), O2=c(21), Strain  = c("PC-rich_077"),  label = c("B"))
+data_text_AnovaSt48P<- data.frame(WL = c("WW"), Phase = c("Pre-stationary"), O2=c(21), Strain  = c("PE-rich_048"),  label = c("B"))
+data_text_AnovaSt127P<- data.frame(WL = c("WW"), Phase = c("Pre-stationary"), O2=c(21), Strain  = c("PE-rich_127"),  label = c("B"))
+
+data_text_AnovaPhase<- data.frame(WL = c("WW", "WW"), Phase = c("Exponential"), O2=c(21, 21, 21, 21), Strain  = c("PC-rich_056", "PC-rich_077", "PE-rich_048", "PE-rich_127"),  label = c('ANOVA, \u03B1 = 0.05', 'ANOVA, \u03B1 = 0.05', 'ANOVA, \u03B1 = 0.05', 'ANOVA, \u03B1 = 0.05'))
+
+WL.labs <- c("Phase of growth")
+names(WL.labs) <- c("WW")
+O2.labs <- c("Strain")
+names(O2.labs) <- c(21)
+
+scientific_10 <- function(x) {   parse(text=gsub("e\\+*", " %*% 10^", scales::scientific_format()(x))) }
+lab1=c(expression("8 h"), expression("12 h"), expression("16 h"))
+lab2=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("900 µE"))
+
+  ggplot(GScatalogMetaFit, aes(x = PARPhotonDose_day, y = meanGS)) +
+  geom_point(aes(x = PARPhotonDose_day, y = meanGS, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 3.5, alpha = 0.8, show.legend = T, GScatalogMetaFit) +
+  geom_errorbar(aes(x = PARPhotonDose_day, ymin = meanGS - sdGS, ymax = meanGS + sdGS, colour = as.factor(Par_ue)), show.legend = F, width=0, size=0.3, GScatalogMetaFit) +
+  geom_point(aes(x = PARPhotonDose_day, y = GS, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 1, alpha = 0.8, show.legend = F, GScatalogMetaFit) +
+    
+  geom_line(aes(PARPhotonDose_day, .fitted), colour = "blue", size = 0.3, linetype = "solid", show.legend = F, augmented) +
+  geom_hline(yintercept = 1, linetype="dashed", size=0.4, colour = "cornsilk4") +
+
+  geom_text(data=data_text_y0Exp, aes(x=23000000, y=3, label=label), size=3.5) +
+  geom_text(data=data_text_yfExp, aes(x=23000000, y=2.5, label=label), size=3.5) +
+  geom_text(data=data_text_lambdaExp, aes(x=24000000, y=2.0, label=label), size=3.5) +
+  
+  geom_text(data=data_text_y0St, aes(x=2400000, y=3, label=label), size=3.5) +
+  geom_text(data=data_text_yfSt, aes(x=2400000, y=2.5, label=label), size=3.5) +
+  geom_text(data=data_text_lambdaSt, aes(x=2400000, y=2.0, label=label), size=3.5) +
+    
+  # geom_text(data=data_text_AnovaExp, aes(x=5000000, y=0, label=label), colour = "blue", size=3.5) +
+  # geom_text(data=data_text_AnovaSt, aes(x=5000000, y=0, label=label), colour = "blue", size=3.5) +
+    
+  geom_text(data=data_text_AnovaExp56, aes(x=25000000, y=1.3, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaExp77, aes(x=25000000, y=1.0, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaExp48, aes(x=25000000, y=0.9, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaExp127, aes(x=25000000, y=1.0, label=label), colour = "blue", size=4) +
+    
+  geom_text(data=data_text_AnovaSt56, aes(x=8000000, y=1.1, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaSt77, aes(x=8000000, y=1.0, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaSt48, aes(x=25000000, y=0.8, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaSt127, aes(x=25000000, y=0.7, label=label), colour = "blue", size=4) +
+    
+  geom_text(data=data_text_AnovaExp56P, aes(x=25000000, y=0.6, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaExp77P, aes(x=25000000, y=0.2, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaExp48P, aes(x=25000000, y=0.1, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaExp127P, aes(x=25000000, y=0.2, label=label), colour = "blue", size=4) +
+    
+  geom_text(data=data_text_AnovaSt56P, aes(x=8000000, y=0.4, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaSt77P, aes(x=8000000, y=0.1, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaSt48P, aes(x=25000000, y=0.1, label=label), colour = "blue", size=4) +
+  geom_text(data=data_text_AnovaSt127P, aes(x=25000000, y=0.0, label=label), colour = "blue", size=4) +
+    
+  geom_text(data=data_text_AnovaPhase, aes(x=7000000, y=-0.2, label=label), colour = "blue", size=4) +
+    
+  scale_shape_manual(values = c(15, 16, 17), name="", labels = lab1) +
+  scale_colour_manual(values = c("darkslategray", "lightblue4", "hotpink4", "indianred3", "khaki2"), name="", labels = lab2) +
+  #scale_x_continuous(label=scientific_10) +
+  scale_x_continuous(breaks=seq(0, 27000000, by = 10000000), label=scientific_10) +
+  coord_cartesian(xlim = c(0, 27000000), ylim = c(-0.5, 3.5)) +
+    
+  guides(color = guide_legend(order = 1), shape  = guide_legend(order = 0)) +
+  labs(y = "Diel growth symmetry (AccLen/DecLen ratio)", x = "Photon dose ( µmol photons "~m^-2~""~d^-1~")") +
+  ggh4x::facet_nested(rows = vars(O2, Strain), cols = vars(WL, Phase), labeller = labeller(WL = WL.labs, O2 = O2.labs)) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="white"),
+        legend.position = c(0.90,0.90),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.y = unit(-0.1, "cm"),
+        legend.title = element_blank(),
+        legend.text = element_text(size=11))
+```
+
+
+# Save plot 
+
+```{r save plot}
+ggsave(file = file.path(FigPath, paste("Fig_GS",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+# Cleaning the environment
+
+```{r}
+rm(data_text_y0Exp, data_text_yfExp, data_text_lambdaExp, data_text_y0St, data_text_yfSt, data_text_lambdaSt, data_text_AnovaExp56P, data_text_AnovaExp77P, data_text_AnovaExp48P, data_text_AnovaExp127P, data_text_AnovaExp56, data_text_AnovaExp77, data_text_AnovaExp48, data_text_AnovaExp127, data_text_AnovaSt56P, data_text_AnovaSt77P, data_text_AnovaSt48P, data_text_AnovaSt127P, data_text_AnovaSt56, data_text_AnovaSt77, data_text_AnovaSt48, data_text_AnovaSt127)
+```
+
+# Calculated Anova and Tukey test from data points
+
+```{r calculated statistics}
+GScatalogMetaFitStats<-GScatalogMetaFit 
+  #filter(Par_ue != 600) 
+
+GScatalogMetaFitStats$Par_ue <- factor(GScatalogMetaFitStats$Par_ue)
+GScatalogMetaFitStats$Photoperiod <- factor(GScatalogMetaFitStats$Photoperiod)
+GScatalogMetaFitStats$Strain <- factor(GScatalogMetaFitStats$Strain)
+GScatalogMetaFitStats$Phase <- factor(GScatalogMetaFitStats$Phase)
+GScatalogMetaFitStats$PARPhotonDose_day <- factor(GScatalogMetaFitStats$PARPhotonDose_day)
+
+# Three way Anova with interactions
+model<-aov(GS~PARPhotonDose_day*Phase*Strain, data=GScatalogMetaFitStats)
+Anova_GS<-data.frame(unclass(summary(model)), check.names = FALSE, stringsAsFactors = FALSE)
+#TukeyHSDTest_GS<-TukeyHSD(model, which = c("PARPhotonDose_day", "Phase", "Strain"))
+```
+
+# Save Rds that create stats and tables
+
+```{r}
+saveRDS(Anova_GS, file.path(TableRdsPath, paste(Project, "Anova_GS.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+# Calculated Anova and Tukey test from exponential decay parameters
+
+```{r calculated statistics}
+
+fitted_GS_Param[2, 4] = NA
+fitted_GS_Param[2, 6] = NA
+
+GS_Param<-fitted_GS_Param 
+  
+GSStats<-GS_Param 
+GSStats2<-rbind(GSStats, GSStats)
+GSStats2$Strain <- factor(GSStats2$Strain)
+GSStats2$Phase <- factor(GSStats2$Phase)
+
+# Two-way Anova
+model<-aov(y0~Strain*Phase, data=GSStats2)
+AnovaTest_GS_y0<-data.frame(unclass(summary(model)), check.names = FALSE, stringsAsFactors = FALSE)
+AnovaTest_GS_y0$Parameter <- 'y0'
+
+model<-aov(yf~Strain*Phase, data=GSStats2)
+AnovaTest_GS_yf<-data.frame(unclass(summary(model)), check.names = FALSE, stringsAsFactors = FALSE)
+AnovaTest_GS_yf$Parameter <- 'yf'
+
+model<-aov(alpha~Strain*Phase, data=GSStats2)
+AnovaTest_GS_alpha<-data.frame(unclass(summary(model)), check.names = FALSE, stringsAsFactors = FALSE)
+AnovaTest_GS_alpha$Parameter <- 'alpha'
+
+Anova_GS_Param<-rbind(AnovaTest_GS_y0, AnovaTest_GS_yf, AnovaTest_GS_alpha)
+
+rm(AnovaTest_GS_y0, AnovaTest_GS_yf, AnovaTest_GS_alpha, GSStats, GSStats2, model, fitted_GS_Param)
+```
+
+# Save Rds that create stats and tables
+
+```{r}
+# saveRDS(AnovaTest_GS_Param, file.path(TableRdsPath, paste(Project, "Anova_GS_Param.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+# Exstracting models for each fit
+
+```{r}
+fittedmodel<-fitted  %>%
+  select(c(Strain, Phase, fit))
+```
+
+# Anova from the model - compare fits
+
+```{r}
+#1->048 St
+#2->056 St
+#3->077 St
+#4->127 St
+#5->127 Exp
+#6->048 Exp
+#7->056 Exp
+#8->077 Exp
+
+#Comparing model for strains from Exp phase
+fittedmodelStrainExp<-fittedmodel 
+  anova056077Exp<-anova(fittedmodelStrainExp[[3]][[7]], fittedmodelStrainExp[[3]][[8]])
+  anova056077Exp$FitComparison <- '056_077_Exp'
+  anova048127Exp<-anova(fittedmodelStrainExp[[3]][[6]], fittedmodelStrainExp[[3]][[5]])
+  anova048127Exp$FitComparison <- '048_127_Exp'
+  anova056048Exp<-anova(fittedmodelStrainExp[[3]][[7]], fittedmodelStrainExp[[3]][[6]])
+  anova056048Exp$FitComparison <- '056_048_Exp'
+  anova077048Exp<-anova(fittedmodelStrainExp[[3]][[8]], fittedmodelStrainExp[[3]][[6]])
+  anova077048Exp$FitComparison <- '077_048_Exp'
+  anova056127Exp<-anova(fittedmodelStrainExp[[3]][[7]], fittedmodelStrainExp[[3]][[5]])
+  anova056127Exp$FitComparison <- '056_127_Exp'
+  anova077127Exp<-anova(fittedmodelStrainExp[[3]][[8]], fittedmodelStrainExp[[3]][[5]])
+  anova077127Exp$FitComparison <- '077_127_Exp'
+  anovaStrainExp<-rbind(anova056077Exp, anova048127Exp, anova056048Exp, anova077048Exp, anova056127Exp, anova077127Exp)
+  anovaStrainExp <-anovaStrainExp %>% 
+  drop_na(Df) 
+  rm(anova056077Exp, anova048127Exp, anova056048Exp, anova077048Exp, anova056127Exp, anova077127Exp)
+
+#Comparing model for strains from St phase
+fittedmodelStrainSt<-fittedmodel 
+  anova056077St<-anova(fittedmodelStrainSt[[3]][[2]], fittedmodelStrainSt[[3]][[3]])
+  anova056077St$FitComparison <- '056_077_St'
+  anova048127St<-anova(fittedmodelStrainSt[[3]][[1]], fittedmodelStrainSt[[3]][[4]])
+  anova048127St$FitComparison <- '048_127_St'
+  anova056048St<-anova(fittedmodelStrainSt[[3]][[1]], fittedmodelStrainSt[[3]][[2]])
+  anova056048St$FitComparison <- '056_048_St'
+  anova077048St<-anova(fittedmodelStrainSt[[3]][[3]], fittedmodelStrainSt[[3]][[1]])
+  anova077048St$FitComparison <- '077_048_St'
+  anova056127St<-anova(fittedmodelStrainSt[[3]][[2]], fittedmodelStrainSt[[3]][[4]])
+  anova056127St$FitComparison <- '056_127_St'
+  anova077127St<-anova(fittedmodelStrainSt[[3]][[3]], fittedmodelStrainSt[[3]][[4]])
+  anova077127St$FitComparison <- '077_127_St'
+  anovaStrainSt<-rbind(anova056077St, anova048127St, anova056048St, anova077048St, anova056127St, anova077127St)
+  anovaStrainSt <-anovaStrainSt %>% 
+  drop_na(Df) 
+  rm(anova056077St, anova048127St, anova056048St, anova077048St, anova056127St, anova077127St)
+  
+#Comparing model for each strains from different phase (Exp vs St)
+fittedmodelPhase<-fittedmodel 
+  anova056ExpSt<-anova(fittedmodelPhase[[3]][[7]], fittedmodelPhase[[3]][[2]])
+  anova056ExpSt$FitComparison <- '056_Exp_St'
+  anova077ExpSt<-anova(fittedmodelPhase[[3]][[8]], fittedmodelPhase[[3]][[3]])
+  anova077ExpSt$FitComparison <- '077_Exp_St'
+  anova048ExpSt<-anova(fittedmodelPhase[[3]][[6]], fittedmodelPhase[[3]][[1]])
+  anova048ExpSt$FitComparison <- '048_Exp_St'
+  anova127ExpSt<-anova(fittedmodelPhase[[3]][[5]], fittedmodelPhase[[3]][[4]])
+  anova127ExpSt$FitComparison <- '127_Exp_St'
+  anovaPhase<-rbind(anova056ExpSt, anova077ExpSt, anova048ExpSt, anova127ExpSt)
+  anovaPhase <-anovaPhase %>% 
+  drop_na(Df) 
+  rm(anova056ExpSt, anova077ExpSt, anova048ExpSt, anova127ExpSt)
+
+  Anova_GS_Model<-rbind(anovaStrainExp, anovaStrainSt, anovaPhase)
+  
+  rm(anovaStrainExp, anovaStrainSt, anovaPhase)
+```
+
+# Save Rds that create stats and tables
+
+```{r}
+saveRDS(Anova_GS_Model, file.path(TableRdsPath, paste(Project, "Anova_GS_Model.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+
+```{r AccLen Plot, warning = FALSE}
+data_text_8<- data.frame(facetsPhase = c("Phase~of~growth", "Phase~of~growth"), Phase = c("Exponential"), facetsStrain=c("Strain", "Strain", "Strain", "Strain"), Strain  = c("PC-rich_056", "PC-rich_077", "PE-rich_048", "PE-rich_127"),  label = c('Max light at   8h', 'Max light at   8h', 'Max light at   8h', 'Max light at   8h'))
+
+data_text_12<- data.frame(facetsPhase = c("Phase~of~growth", "Phase~of~growth"), Phase = c("Exponential"), facetsStrain=c("Strain", "Strain", "Strain", "Strain"), Strain  = c("PC-rich_056", "PC-rich_077", "PE-rich_048", "PE-rich_127"),  label = c('Max light at 12h', 'Max light at 12h', 'Max light at 12h', 'Max light at 12h'))
+
+data_text_16<- data.frame(facetsPhase = c("Phase~of~growth", "Phase~of~growth"), Phase = c("Exponential"), facetsStrain=c("Strain", "Strain", "Strain", "Strain"), Strain  = c("PC-rich_056", "PC-rich_077", "PE-rich_048", "PE-rich_127"),  label = c('Max light at 16h', 'Max light at 16h', 'Max light at 16h', 'Max light at 16h'))
+
+
+scientific_10 <- function(x) {   parse(text=gsub("e\\+*", " %*% 10^", scales::scientific_format()(x))) }
+lab1=c(expression("8 h"), expression("12 h"), expression("16 h"))
+lab2=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("900 µE"))
+
+GScatalogMeta %>%
+  filter(meanAccLen>0) %>% 
+  ggplot() +
+  geom_point(aes(x = PARPhotonDose_day, y = meanAccLen, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 3.5, alpha = 0.8, show.legend = T) +
+  # geom_line(aes(x = PARPhotonDose_day, y = meanAccLen, colour = as.factor(Par_ue)), size = 0.3, show.legend = F) +
+  geom_line(aes(x = PARPhotonDose_day, y = meanAccLen, linetype=as.factor(Photoperiod)), colour = "blue", size=0.3, show.legend = F) +
+  geom_errorbar(aes(x = PARPhotonDose_day, ymin = meanAccLen - sdAccLen, ymax = meanAccLen + sdAccLen, colour = as.factor(Par_ue)), show.legend = F, width=0, size=0.3) +
+  geom_point(aes(x = PARPhotonDose_day, y = AccLen, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 1, alpha = 0.8, show.legend = F) +
+  geom_text(data=data_text_8, aes(x=32000000, y=3.5, label=label), size=2.8) +
+  geom_text(data=data_text_12, aes(x=32000000, y=5.5, label=label), size=2.8) +
+  geom_text(data=data_text_16, aes(x=32000000, y=7.5, label=label), size=2.8) +
+  geom_hline(data = data_hlineGS8, aes(yintercept = value), linetype="dashed", size=0.4, colour = "cornsilk4") +
+  geom_hline(data = data_hlineGS12, aes(yintercept = value), linetype="dashed", size=0.4, colour = "cornsilk4") +
+  geom_hline(data = data_hlineGS16, aes(yintercept = value), linetype="dashed", size=0.4, colour = "cornsilk4") +
+  scale_shape_manual(values = c(15, 16, 17), name="", labels = lab1) +
+  scale_colour_manual(values = c("darkslategray", "lightblue4", "hotpink4", "indianred3", "khaki2"), name="", labels = lab2) +
+  scale_linetype_manual(values = c("solid", "solid", "solid"), name="", labels = lab1) +
+  scale_x_continuous(breaks=seq(0, 30000000, by = 10000000), label=scientific_10) +
+  scale_y_continuous(breaks=seq(0, 10, by = 2)) +
+  coord_cartesian(ylim = c(0, 12), xlim = c(0, 36000000)) +
+  guides(color = guide_legend(order = 1), shape  = guide_legend(order = 0)) +
+  labs(y = "Hours of photoperiod to reach maximum hourly growth", x = "Photon dose ( µmol photons "~m^-2~""~d^-1~")") +
+  ggh4x::facet_nested(cols = vars(facetsPhase, Phase), rows = vars(facetsStrain, Strain), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="white"),
+        legend.position = c(0.90,0.9),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.y = unit(-0.1, "cm"),
+        legend.title = element_blank(),
+        legend.text = element_text(size=11))
+```
+
+# Save plot 
+
+```{r save plot}
+# ggsave(file = file.path(PlotsPath, paste("AccLen2_Plot",".png",sep = "")), height=10, width= 8,  dpi = 300, limitsize = TRUE)
+```
+
+```{r AccLen Plot, fig.height = 8, fig.width = 8, warning = FALSE}
+data_text_8<- data.frame(facetsPhase = c("Phase~of~growth"), Phase = c("Pre-stationary"), facetsStrain=c("Strain", "Strain", "Strain", "Strain"), Strain  = c("PC-rich_077"),  label = c('Time to max light for  8h photoperiod'))
+
+data_text_12<- data.frame(facetsPhase = c("Phase~of~growth"), Phase = c("Pre-stationary"), facetsStrain=c("Strain", "Strain", "Strain", "Strain"), Strain  = c("PC-rich_077"),  label = c('Time to max light for 12h photoperiod'))
+
+data_text_16<- data.frame(facetsPhase = c("Phase~of~growth"), Phase = c("Pre-stationary"), facetsStrain=c("Strain", "Strain", "Strain", "Strain"), Strain  = c("PC-rich_077"),  label = c("Time to max light for 16h photoperiod"))
+
+
+scientific_10 <- function(x) {   parse(text=gsub("e\\+*", " %*% 10^", scales::scientific_format()(x))) }
+lab1=c(expression("8 h"), expression("12 h"), expression("16 h"))
+lab2=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("900 µE"))
+
+GScatalogMeta %>%
+  filter(meanAccLen>0) %>% 
+  ggplot() +
+  geom_point(aes(x = PARPhotonDose_day, y = meanAccLen, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 3.5, alpha = 0.8, show.legend = T) +
+  geom_line(aes(x = PARPhotonDose_day, y = meanAccLen, colour = as.factor(Par_ue)), size = 0.3, show.legend = F) +
+  geom_errorbar(aes(x = PARPhotonDose_day, ymin = meanAccLen - sdAccLen, ymax = meanAccLen + sdAccLen, colour = as.factor(Par_ue)), show.legend = F, width=0, size=0.3) +
+  geom_point(aes(x = PARPhotonDose_day, y = AccLen, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 1, alpha = 0.8, show.legend = F) +
+  geom_text(data=data_text_8, aes(x=24000000, y=3.5, label=label), size=2.8) +
+  geom_text(data=data_text_12, aes(x=24000000, y=5.5, label=label), size=2.8) +
+  geom_text(data=data_text_16, aes(x=24000000, y=7.5, label=label), size=2.8) +
+  geom_hline(data = data_hlineGS8, aes(yintercept = value), linetype="dashed", size=0.4, colour = "cornsilk4") +
+  geom_hline(data = data_hlineGS12, aes(yintercept = value), linetype="dashed", size=0.4, colour = "cornsilk4") +
+  geom_hline(data = data_hlineGS16, aes(yintercept = value), linetype="dashed", size=0.4, colour = "cornsilk4") +
+  scale_shape_manual(values = c(15, 16, 17), name="", labels = lab1) +
+  scale_colour_manual(values = c("darkslategray", "lightblue4", "hotpink4", "indianred3", "khaki2"), name="", labels = lab2) +
+  scale_x_continuous(breaks=seq(0, 30000000, by = 10000000), label=scientific_10) +
+  scale_y_continuous(breaks=seq(0, 10, by = 2)) +
+  coord_cartesian(ylim = c(0, 12), xlim = c(0, 37000000)) +
+  
+  guides(color = guide_legend(order = 1), shape  = guide_legend(order = 0)) +
+  labs(y = "Hours of photoperiod to reach maximum hourly growth", x = "Photon dose ( µmol photons "~m^-2~""~d^-1~")") +
+  ggh4x::facet_nested(cols = vars(facetsPhase, Phase), rows = vars(facetsStrain, Strain), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="white"),
+        legend.position = c(0.9,0.9),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.y = unit(-0.1, "cm"),
+        legend.title = element_blank(),
+        legend.text = element_text(size=11))
+```
+
+# Save plot 
+
+```{r save plot}
+ggsave(file = file.path(FigPath, paste("Fig_AccLen",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+```{r AccLen Plot, fig.height = 8, fig.width = 8, warning = FALSE}
+
+scientific_10 <- function(x) {   parse(text=gsub("e\\+*", " %*% 10^", scales::scientific_format()(x))) }
+lab1=c(expression("8 h"), expression("12 h"), expression("16 h"))
+lab2=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("900 µE"))
+
+GScatalogMeta %>%
+  filter(meanAccLen>0) %>% 
+  ggplot() +
+  geom_point(aes(x = Photoperiod, y = AccLen, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 1, alpha = 0.8, show.legend = F) +
+  geom_errorbar(aes(x = Photoperiod, ymin = meanAccLen - sdAccLen, ymax = meanAccLen + sdAccLen, colour = as.factor(Par_ue)), show.legend = F, width=0) +
+  geom_point(aes(x = Photoperiod, y = meanAccLen, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 3.5, alpha = 0.8, show.legend = T) +
+  scale_shape_manual(values = c(15, 16, 17), name="", labels = lab1) +
+  scale_colour_manual(values = c("darkslategray", "lightblue4", "hotpink4", "indianred3", "khaki2"), name="", labels = lab2) +
+  geom_abline(slope = 0.5, intercept = 0, linetype = "dashed", size=0.4, colour = "cornsilk4") +
+  scale_y_continuous(breaks=seq(0, 10, by = 2)) +
+  coord_cartesian(ylim = c(0, 14)) +
+  guides(color = guide_legend(order = 1), shape  = guide_legend(order = 0)) +
+  labs(y = "Hours of photoperiod to reach maximum hourly growth", x = "Photoperiod (h)") +
+  ggh4x::facet_nested(cols = vars(facetsPhase, Phase), rows = vars(facetsStrain, Strain), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        panel.spacing.x = unit(1,"lines"),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="transparent"),
+        legend.position = c(0.6,0.91),
+        #legend.margin = margin(0,-0.5,0,0, unit="cm"),
+        legend.key.height= unit(0.0005, 'cm'),
+        legend.spacing.y = unit(-0.2, "cm"),
+        legend.title = element_blank(),
+        legend.text = element_text(size=11))
+```
+
+# Save plot 
+
+```{r save plot}
+ggsave(file = file.path(FigPath, paste("SFig_AccLen",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+
+# Create 4 df for vertical lines (coloured as Strain) contained tMaxAG values
+
+```{r}
+tMaxAGLines_056<-GScatalogMeta %>% 
+  filter(Strain == "PC-rich_056") %>% 
+  select(c(Par_ue, Photoperiod, facetsPar_ue, facetsPhotoperiod, tMaxAG)) %>% 
+  unique()
+tMaxAGLines_077<-GScatalogMeta %>% 
+  filter(Strain == "PC-rich_077") %>% 
+  select(c(Par_ue, Photoperiod, facetsPar_ue, facetsPhotoperiod, tMaxAG)) %>% 
+  unique()
+tMaxAGLines_048<-GScatalogMeta %>% 
+  filter(Strain == "PE-rich_048") %>% 
+  select(c(Par_ue, Photoperiod, facetsPar_ue, facetsPhotoperiod, tMaxAG)) %>% 
+  unique()
+tMaxAGLines_127<-GScatalogMeta %>% 
+  filter(Strain == "PE-rich_127") %>% 
+  select(c(Par_ue, Photoperiod, facetsPar_ue, facetsPhotoperiod, tMaxAG)) %>% 
+  unique()
+```
+
+# Create TDG plot
+
+```{r Create TDG plot, warning = FALSE}
+GScatalogMeta %>%
+  filter(Photoperiod != 24) %>% 
+  ggplot() +
+  geom_point(aes(x = PhotoperiodTend_h, y = TDG, colour = as.factor(Strain)), size = 3, alpha = 0.8, show.legend = T) +
+  geom_vline(data = tMaxAGLines_056, aes(xintercept = tMaxAG), linetype="dotdash", colour = "seagreen4", size=0.4) +
+  geom_vline(data = tMaxAGLines_077, aes(xintercept = tMaxAG), linetype="dotdash", colour = "palegreen3", size=0.4) +
+  geom_vline(data = tMaxAGLines_048, aes(xintercept = tMaxAG), linetype="dotdash", colour = "brown4", size=0.4) +
+  geom_vline(data = tMaxAGLines_127, aes(xintercept = tMaxAG), linetype="dotdash", colour = "brown1", size=0.4) +
+labs(y = "TDG ("~OD[680]~")", x = "Elapsed time (h)") +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4")) +
+  scale_x_continuous(breaks=seq(0, 300, by = 100)) +
+  coord_cartesian(xlim = c(0, 350)) +
+  ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        legend.background = element_rect(fill="transparent"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        #panel.spacing.x=unit(0.9, "lines"),
+        legend.position = c(0.1,0.93),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.y = unit(-0.1, "cm"),
+        legend.spacing.x = unit(-0.1, 'cm'),
+        legend.title = element_blank(),
+        legend.text = element_text(size=11))
+```
+
+# Save plot 
+
+```{r save plot}
+# ggsave(file = file.path(FigPath, paste("SFig_TDG",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+# Removed unnecessary files from the environment
+
+```{r cleaning the environment}
+rm(data_hlineGS8, data_hlineGS12, data_hlineGS16, GScatalog, GScatalogMetaExp,  CultureCatalog, tMaxAGLines_056, tMaxAGLines_077, tMaxAGLines_048, tMaxAGLines_127, GScatalogMetaFinalPlot, GSMetaExp, GSMetaExpPlot, data_text_8, data_text_12, data_text_16, augmented, data_text_AnovaPhase, fitted, fittedmodel, fittedmodelPhase, fittedmodelStrainExp, fittedmodelStrainSt, GScatalogMetaExpSt, GScatalogMetaFit, GScatalogMetaFitStats)
+```
+
+# Save Rds that create plot
+
+```{r}
+# saveRDS(GScatalogMeta, file.path(FigRdsPath, paste(Project, "Fig_GrowthSymmetry_1.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+# 
+# saveRDS(augmented, file.path(FigRdsPath, paste(Project, "Fig_GrowthSymmetry_2.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+
+# Save Rds for further analysis
+
+```{r save Rds}
+saveRDS(GScatalogMeta, file.path(DataOut, paste(Project, "Processed_GrowthSymmetryData.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+# Variable names used in Data Dictionary
+
+```{r}
+colnames(GScatalogMeta)
+```
+
+
+
+# Performed a t-test using the coefficients from a non-linear model in R.
+Welch Two Sample t-test - Welch's t-test
+
+In statistics, Welch's t-test, or unequal variances t-test, is a two-sample location test which is used to test the (null) hypothesis that two populations have equal means. It is more reliable when the two samples have unequal variances and possibly unequal sample sizes. These tests are often referred to as "unpaired" or "independent samples" t-tests, as they are typically applied when the statistical units underlying the two samples being compared are non-overlapping. Given that Welch's t-test has been less popular than Student's t-test and may be less familiar to readers, a more informative name is "Welch's unequal variances t-test" — or "unequal variances t-test" for brevity.
+```{r}
+# #1->048 St
+# #2->056 St
+# #3->077 St
+# #4->127 St
+# #5->127 Exp
+# #6->048 Exp
+# #7->056 Exp
+# #8->077 Exp
+# fittedmodelStrainExp<-fittedmodel 
+# 
+# model1 <- fittedmodelStrainExp[[3]][[1]]
+# model2 <- fittedmodelStrainExp[[3]][[2]]
+# model3 <- fittedmodelStrainExp[[3]][[3]]
+# model4 <- fittedmodelStrainExp[[3]][[4]]
+# model5 <- fittedmodelStrainExp[[3]][[5]]
+# model6 <- fittedmodelStrainExp[[3]][[6]]
+# model7 <- fittedmodelStrainExp[[3]][[7]]
+# model8 <- fittedmodelStrainExp[[3]][[8]]
+# # Extract coefficients
+# coef_model1 <- coef(model1)
+# coef_model2 <- coef(model2)
+# coef_model3 <- coef(model3)
+# coef_model4 <- coef(model4)
+# coef_model5 <- coef(model5)
+# coef_model6 <- coef(model6)
+# coef_model7 <- coef(model7)
+# coef_model8 <- coef(model8)
+# # Perform t-test
+# t_test_result_056_077_Exp <- t.test(coef_model7, coef_model8) #'056_077_Exp'
+# t_test_result_048_127_Exp <- t.test(coef_model6, coef_model5) #'048_127_Exp'
+# t_test_result_056_048_Exp <- t.test(coef_model7, coef_model6) #'056_048_Exp'
+# t_test_result_077_048_Exp <- t.test(coef_model8, coef_model6) #'077_048_Exp'
+# t_test_result_056_127_Exp <- t.test(coef_model7, coef_model5) #'056_127_Exp'
+# t_test_result_077_127_Exp <- t.test(coef_model8, coef_model5) #'077_127_Exp'
+# 
+# # Extract relevant information
+# t_test_result_056_077_Exp <- data.frame(t_test = t_test_result_056_077_Exp$statistic, p_value = t_test_result_056_077_Exp$p.value, Df = t_test_result_056_077_Exp$parameter, conf_interval_lower = t_test_result_056_077_Exp$conf.int[1], conf_interval_upper = t_test_result_056_077_Exp$conf.int[2], method = t_test_result_056_077_Exp$method, alternative = t_test_result_056_077_Exp$alternative, Fit_model = c("056_077_Exp", "056_077_Exp"))
+# 
+# t_test_result_048_127_Exp <- data.frame(t_test = t_test_result_048_127_Exp$statistic, p_value = t_test_result_048_127_Exp$p.value, Df = t_test_result_048_127_Exp$parameter, conf_interval_lower = t_test_result_048_127_Exp$conf.int[1], conf_interval_upper = t_test_result_048_127_Exp$conf.int[2], method = t_test_result_048_127_Exp$method, alternative = t_test_result_048_127_Exp$alternative, Fit_model = c("048_127_Exp", "048_127_Exp"))
+# 
+# t_test_result_056_048_Exp <- data.frame(t_test = t_test_result_056_048_Exp$statistic, p_value = t_test_result_056_048_Exp$p.value, Df = t_test_result_056_048_Exp$parameter, conf_interval_lower = t_test_result_056_048_Exp$conf.int[1], conf_interval_upper = t_test_result_056_048_Exp$conf.int[2], method = t_test_result_056_048_Exp$method, alternative = t_test_result_056_048_Exp$alternative, Fit_model = c("056_048_Exp", "056_048_Exp"))
+# 
+# t_test_result_077_048_Exp <- data.frame(t_test = t_test_result_077_048_Exp$statistic, p_value = t_test_result_077_048_Exp$p.value, Df = t_test_result_077_048_Exp$parameter, conf_interval_lower = t_test_result_077_048_Exp$conf.int[1], conf_interval_upper = t_test_result_077_048_Exp$conf.int[2], method = t_test_result_077_048_Exp$method, alternative = t_test_result_077_048_Exp$alternative, Fit_model = c("077_048_Exp", "077_048_Exp"))
+# 
+# t_test_result_056_127_Exp <- data.frame(t_test = t_test_result_056_127_Exp$statistic, p_value = t_test_result_056_127_Exp$p.value, Df = t_test_result_056_127_Exp$parameter, conf_interval_lower = t_test_result_056_127_Exp$conf.int[1], conf_interval_upper = t_test_result_056_127_Exp$conf.int[2], method = t_test_result_056_127_Exp$method, alternative = t_test_result_056_127_Exp$alternative, Fit_model = c("056_127_Exp", "056_127_Exp"))
+# 
+# t_test_result_077_127_Exp <- data.frame(t_test = t_test_result_077_127_Exp$statistic, p_value = t_test_result_077_127_Exp$p.value, Df = t_test_result_077_127_Exp$parameter, conf_interval_lower = t_test_result_077_127_Exp$conf.int[1], conf_interval_upper = t_test_result_077_127_Exp$conf.int[2], method = t_test_result_077_127_Exp$method, alternative = t_test_result_077_127_Exp$alternative, Fit_model = c("077_127_Exp", "077_127_Exp"))
+#   
+# anovaStrainExp<-rbind(t_test_result_056_077_Exp, t_test_result_048_127_Exp, t_test_result_056_048_Exp, t_test_result_077_048_Exp, t_test_result_056_127_Exp, t_test_result_077_127_Exp)
+# anovaStrainExp<-anovaStrainExp %>% 
+#   unique()
+
+```
+
