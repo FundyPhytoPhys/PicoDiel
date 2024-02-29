@@ -1,0 +1,1164 @@
+---
+title: "Process_GrowthCurveData"
+author:
+- Sylwia Sliwinska-Wilczewska
+- Douglas A. Campbell
+date: "`r format(Sys.Date())`"
+output:
+bookdown::html_document2:
+    code_folding: show
+    keep_md: yes
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 6
+    fig_caption: yes
+bibliography: BalticPhotoperiod.bib
+csl: plos-one.csl
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Set Chunk Options
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+knitr::opts_chunk$set(fig.path='Figs/')
+```
+
+# Introduction
+
+Process_GrowthCurveData.Rmd separately processes and combines all .Rds from Data/ImportedData/ImportedMCData folder. This .Rmd generates BalticPhotoperiod_Processed_GrowthCurve.Rds (stored in Data/ProcessedData/ProcessedGrowthCurveData folder) and GrowthCurve_SupPlot.png (stored in Output/Plots folder).
+
+# Load Libraries and set Project Variables
+
+```{r load libraries} 
+library(xts)
+library(signal)
+
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(broom)
+library(knitr)
+library(OneR)
+library(zoo)
+library(ggpubr)
+library(data.table)
+library(googledrive)
+library(googlesheets4)
+
+```
+
+```{r set project variables}
+Project <- "BalticPhotoperiod"
+DataOut <- file.path("..", "Data", "ProcessedData", "ProcessedGrowthCurveData")
+
+FigPath <- file.path("..", "Output", "Figures")
+FigRdsPath <- file.path("..", "Output", "FiguresRds")
+TableRdsPath <- file.path("..", "Output", "TablesRDS")
+```
+
+## Read Data
+```{r data files}
+MCFiles <- list.files(path = file.path("..", "Data", "ImportedData", "ImportedMCData"), full.names = TRUE)
+MCFiles
+```
+
+```{r read data}
+
+MCData <- readRDS(file = MCFiles[1]) |>
+  ungroup() |>
+  mutate(DeltaOD = OD680 - OD720)
+
+  colnames(MCData)
+  
+MCDataAll <- map_df(MCFiles, readRDS) |>
+  ungroup() |>
+  mutate(DeltaOD = OD680 - OD720)
+```
+
+```{r Import Run and calculate mean OD, echo = FALSE, warning = FALSE}
+
+MCDataAll$ToD = sub("\\..*", "", MCDataAll$ToD)
+MCDataAll$time = sub("\\..*", "", MCDataAll$time)
+
+MCDataAll <- MCDataAll %>% 
+  mutate(ToD=as.numeric(ToD)) %>% 
+  mutate(time=as.numeric(time)) %>% 
+  mutate(Actinic_par = Actinic_par/1000) %>% 
+  rename(time_h=time) 
+  
+MCDataAll <- MCDataAll %>%   
+  group_by(SampleID, Day, ToD, time_h, Run) %>% 
+  summarize(Run, SampleID, Strain, ExpDate, Filename, Tube, time_h, ToD, Day, ExpDate, Actinic_par, OD680, OD720, DeltaOD, Par_ue, Photoperiod, O2, WL, LightShape, ExpEndDate, meanActinic_par_h = mean(Actinic_par), meanOD680_h = mean(OD680), meanOD720_h = mean(OD720), meanDeltaOD_h = mean(DeltaOD)) %>%
+  ungroup() %>% 
+  select(-c(Actinic_par, OD680, OD720, DeltaOD)) %>% 
+  unique()
+```
+
+# Rename column names for consistency
+
+```{r}
+MultiCultiDataAll<-MCDataAll %>% 
+  rename(E_days=Day) %>% 
+  rename(FilenameMC=Filename) %>% 
+  rename(Time_h=time_h)
+```
+
+# Add facets labels and change strain name to create plot
+
+```{r add facets labels and change strain names}
+MultiCultiDataAll$facetsPar_ue = factor(MultiCultiDataAll$O2, labels = c("PAR~(µmol~photons~m^{-2}~s^{-1})"))
+MultiCultiDataAll$facetsPhotoperiod = factor(MultiCultiDataAll$WL, labels = c("Photoperiod~(h)"))
+
+MultiCultiDataAll <- MultiCultiDataAll %>% 
+    mutate(Strain=case_when(Strain=="BA127R"~"PE-rich_127",
+         Strain=="BA48R"~"PE-rich_048",
+        Strain=="BA56G"~"PC-rich_056",
+         Strain=="BA77G"~"PC-rich_077")) 
+```
+
+# Load tmaxAG catalog and create 4 df for vertical lines (coloured as Strain) contained tMaxAG values
+
+```{r}
+gs4_deauth()
+tmaxAG<- read_sheet("https://docs.google.com/spreadsheets/d/1ksY7xlg9wOsICOBRmZkHPKdd9KOislNwPDzyuJ3UIUI/edit#gid=0")
+as.data.frame(tmaxAG)
+tmaxAG <- tmaxAG
+
+tmaxAG<-tmaxAG %>% 
+  mutate(Par_ue = as.numeric(Par_ue)) %>%
+  mutate(Photoperiod = as.numeric(Photoperiod)) %>%
+  mutate(tMaxAG = as.numeric(tMaxAG)) %>%
+  mutate(Strain=case_when(Strain=="BA127R"~"PE-rich_127",
+         Strain=="BA48R"~"PE-rich_048",
+        Strain=="BA56G"~"PC-rich_056",
+         Strain=="BA77G"~"PC-rich_077"))
+
+tmaxAG$facetsPar_ue = factor(tmaxAG$O2, labels = c("PAR~(µmol~photons~m^{-2}~s^{-1})"))
+tmaxAG$facetsPhotoperiod = factor(tmaxAG$WL, labels = c("Photoperiod~(h)"))
+tmaxAG$facetsStrain = factor(tmaxAG$O2, labels = c("Strain"))
+```
+
+```{r select revelant columns}
+tMaxAGLines_056<-tmaxAG %>% 
+  filter(Strain == "PC-rich_056") %>% 
+  select(c(Par_ue, Photoperiod, facetsPar_ue, facetsPhotoperiod, tMaxAG)) %>% 
+  unique()
+tMaxAGLines_077<-tmaxAG %>% 
+  filter(Strain == "PC-rich_077") %>% 
+  select(c(Par_ue, Photoperiod, facetsPar_ue, facetsPhotoperiod, tMaxAG)) %>% 
+  unique()
+tMaxAGLines_048<-tmaxAG %>% 
+  filter(Strain == "PE-rich_048") %>% 
+  select(c(Par_ue, Photoperiod, facetsPar_ue, facetsPhotoperiod, tMaxAG)) %>% 
+  unique()
+tMaxAGLines_127<-tmaxAG %>% 
+  filter(Strain == "PE-rich_127") %>% 
+  select(c(Par_ue, Photoperiod, facetsPar_ue, facetsPhotoperiod, tMaxAG)) %>% 
+  unique()
+```
+
+
+# Create GrowthCurve plot
+
+```{r create GrowthCurve plot, fig.height = 8, fig.width = 8, warning = FALSE}
+MultiCultiDataAll %>%
+  #filter(Par_ue != 600) %>% 
+  filter(Run != 77) %>% 
+  ggplot() +
+  geom_area(aes(x = Time_h, y = meanActinic_par_h), size = 0.1, fill = "tan1", alpha = 0.6) +
+  geom_line(aes(x = Time_h, y = meanOD680_h, colour = as.factor(Strain)), size = 0.5, show.legend = T) +
+  geom_vline(data = tMaxAGLines_056, aes(xintercept = tMaxAG), linetype="dotdash", colour = "seagreen4", size=0.4) +
+  geom_vline(data = tMaxAGLines_077, aes(xintercept = tMaxAG), linetype="dotdash", colour = "palegreen3", size=0.4) +
+  geom_vline(data = tMaxAGLines_048, aes(xintercept = tMaxAG), linetype="dotdash", colour = "brown4", size=0.4) +
+  geom_vline(data = tMaxAGLines_127, aes(xintercept = tMaxAG), linetype="dotdash", colour = "brown1", size=0.4) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="") +
+  scale_y_continuous(breaks=seq(0, 1, by = 0.25)) +
+  coord_cartesian(ylim = c(0, 1.0)) +
+  labs(y = "Optical density ("~OD[680]~")", x = "Elapsed time (h)") +
+  ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="transparent"),
+        legend.position = c(0.12,0.96),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.x = unit(0.01, 'cm'),
+        legend.text = element_text(size=11))
+```
+
+# Save plot 
+
+```{r save plot}
+ggsave(file = file.path(FigPath, paste("SFig_GrowthCurve_OD680",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+# Create GrowthCurve plot
+
+```{r create GrowthCurve plot, fig.height = 8, fig.width = 8, warning = FALSE}
+MultiCultiDataAll %>%
+  #filter(Par_ue != 600) %>% 
+  filter(Run != 77) %>% 
+  ggplot() +
+  geom_area(aes(x = Time_h, y = meanActinic_par_h), size = 0.1, fill = "tan1", alpha = 0.6) +
+  geom_line(aes(x = Time_h, y = meanOD720_h, colour = as.factor(Strain)), size = 0.5, show.legend = T) +
+  geom_vline(data = tMaxAGLines_056, aes(xintercept = tMaxAG), linetype="dotdash", colour = "seagreen4", size=0.4) +
+  geom_vline(data = tMaxAGLines_077, aes(xintercept = tMaxAG), linetype="dotdash", colour = "palegreen3", size=0.4) +
+  geom_vline(data = tMaxAGLines_048, aes(xintercept = tMaxAG), linetype="dotdash", colour = "brown4", size=0.4) +
+  geom_vline(data = tMaxAGLines_127, aes(xintercept = tMaxAG), linetype="dotdash", colour = "brown1", size=0.4) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="") +
+  scale_y_continuous(breaks=seq(0, 1, by = 0.25)) +
+  coord_cartesian(ylim = c(0, 1.0)) +
+  labs(y = "Optical density ("~OD[720]~")", x = "Elapsed time (h)") +
+  ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="transparent"),
+        legend.position = c(0.12,0.96),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.x = unit(0.01, 'cm'),
+        legend.text = element_text(size=11))
+```
+
+# Save plot 
+
+```{r save plot}
+ggsave(file = file.path(FigPath, paste("SFig_GrowthCurve_OD720",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+# Create GrowthCurve plot
+
+```{r create GrowthCurve plot, fig.height = 8, fig.width = 8, warning = FALSE}
+MultiCultiDataAll %>%
+  #filter(Par_ue != 600) %>% 
+  filter(Run != 77) %>% 
+  ggplot() +
+  geom_area(aes(x = Time_h, y = meanActinic_par_h/2), size = 0.1, fill = "tan1", alpha = 0.6) +
+  geom_line(aes(x = Time_h, y = meanDeltaOD_h, colour = as.factor(Strain)), size = 0.5, show.legend = T) +
+  geom_vline(data = tMaxAGLines_056, aes(xintercept = tMaxAG), linetype="dotdash", colour = "seagreen4", size=0.4) +
+  geom_vline(data = tMaxAGLines_077, aes(xintercept = tMaxAG), linetype="dotdash", colour = "palegreen3", size=0.4) +
+  geom_vline(data = tMaxAGLines_048, aes(xintercept = tMaxAG), linetype="dotdash", colour = "brown4", size=0.4) +
+  geom_vline(data = tMaxAGLines_127, aes(xintercept = tMaxAG), linetype="dotdash", colour = "brown1", size=0.4) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="") +
+  # scale_y_continuous(breaks=seq(0, 1, by = 0.25)) +
+  # coord_cartesian(ylim = c(0, 1.0)) +
+  # labs(y = "Growth curves ( tracked as chlorophyll proxy"~OD[680]~"-"~OD[720]~"(\u0394 OD)", x = "Elapsed time (h)") +
+  # labs(y = "Growth curves (tracked as \u0394 OD)", x = "Elapsed time (h)") +
+  labs(y = "Optical density (chlorophyll proxy"~OD[680]~"-"~OD[720]~")", x = "Elapsed time (h)") +
+  ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="transparent"),
+        legend.position = c(0.12,0.96),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.x = unit(0.01, 'cm'),
+        legend.text = element_text(size=11))
+```
+
+# Save plot 
+
+```{r save plot}
+ggsave(file = file.path(FigPath, paste("SFig_GrowthCurve_DeltaOD",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+
+# Create preliminary plot - loop
+
+```{r create preliminary plot, warning = FALSE}
+MultiCultiDataAll %>%
+  ggplot() +
+  geom_line(aes(x = meanOD720_h, y = meanDeltaOD_h, colour = as.factor(Strain)), size = 0.7, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="") +
+  ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
+  theme_bw() 
+```
+
+
+# Save Rds for further analysis
+
+```{r save rds}
+saveRDS(MultiCultiDataAll, file.path(DataOut, paste(Project, "Processed_GrowthCurve.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+# Variable names used in Data Dictionary
+
+```{r}
+colnames(MultiCultiDataAll)
+```
+
+
+-------------------------------------------------# Logistic fits till Pmax-------------------------------------------------------
+
+
+```{r set project variables}
+Project <- "BalticPhotoperiod"
+#DataOut <- file.path("..", "Data", "ProcessedData", "ProcessedGrowthRateData")
+DataIn <- file.path("..", "Data", "CleanedData", "CleanedMCData", fsep = .Platform$file.sep)
+
+FigPath <- file.path("..", "Output", "Figures")
+FigRdsPath <- file.path("..", "Output", "FiguresRds")
+TableRdsPath <- file.path("..", "Output", "TablesRDS")
+
+FileEncode <- "UTF-8" 
+Delimiter <- ""
+HeaderRows <- 0
+```
+
+# List and read files
+
+```{r Exported Rmd only first time in session}
+list.files(path = DataIn, full.names = TRUE)
+```
+
+```{r read file}
+MultiCultiGrowthFile <- "../Data/CleanedData/CleanedMCData/PICO_Cleaned_MCData.Rds"
+
+MultiCultiGrowthFileName <- str_split(string = MultiCultiGrowthFile, "/")[[1]][3] %>%
+  str_remove(pattern = ".Rds") 
+
+MultiCultiGrowth <- readRDS(MultiCultiGrowthFile)  %>%
+  ungroup()
+```
+
+# Select revelant variables and preparing for further analysis
+
+```{r}
+MultiCultiGrowth<-MultiCultiGrowth %>% 
+  dplyr::select(c(Tube, ExpDate, MC, Run, SampleID, Strain, Par_ue, Photoperiod, WL, O2, LightShape, PARPhotonDose_day, OD720_Lmu_se, OD720_Lmu_corr, deltaOD_Lmu_se, deltaOD_Lmu_corr, tubedata, deltaOD_logistic_predict))
+
+MultiCultiGrowth<-MultiCultiGrowth %>% 
+  mutate(Strain=case_when(Strain=="BA127R"~"PE-rich_127",
+         Strain=="BA48R"~"PE-rich_048",
+        Strain=="BA56G"~"PC-rich_056",
+         Strain=="BA77G"~"PC-rich_077"))
+
+MultiCultiGrowth1<-MultiCultiGrowth %>% 
+  filter(Run==77) %>% 
+  filter(Strain =="PC-rich_077")
+MultiCultiGrowth2<-MultiCultiGrowth %>% 
+  filter(Run==121) %>% 
+  filter(Strain !="PC-rich_077")
+MultiCultiGrowth3<-MultiCultiGrowth %>% 
+  filter(Run!=121 & Run!= 77) 
+MCGrowthRate<-rbind(MultiCultiGrowth1, MultiCultiGrowth2, MultiCultiGrowth3)
+  rm(MultiCultiGrowth, MultiCultiGrowth1, MultiCultiGrowth2, MultiCultiGrowth3)
+```
+
+```{r unnest, preparing df to preparing final plot, echo=FALSE, warning = FALSE}
+
+augmentedMCGrowthRateFitDeltaOD<-MCGrowthRate  %>%
+  unnest(deltaOD_logistic_predict) %>%
+  select(c(deltaOD, time, .fitted)) 
+
+augmentedMCGrowthRateTubedata<-MCGrowthRate  %>%
+  unnest(tubedata)
+
+augmentedMCGrowthRateTubedata<-augmentedMCGrowthRateTubedata %>% 
+  select(-c(deltaOD_logistic_predict))
+
+```
+
+# Merge tubedata and fit prediction - DeltaOD
+
+```{r warning = FALSE}
+
+MCGrowthRateFitDeltaOD <- augmentedMCGrowthRateFitDeltaOD %>%
+  left_join(., augmentedMCGrowthRateTubedata, by = c("deltaOD" = "deltaOD", "time" = "time"))
+MCGrowthRateFitDeltaOD<-MCGrowthRateFitDeltaOD %>% 
+  rename(fittedDeltaOD = .fitted) 
+
+MCGrowthRateFitData<-MCGrowthRateFitDeltaOD
+
+```
+
+
+```{r Import Run and calculate mean OD, echo = FALSE, warning = FALSE}
+
+MCGrowthRateFitData$ToD = sub("\\..*", "", MCGrowthRateFitData$ToD)
+MCGrowthRateFitData$time = sub("\\..*", "", MCGrowthRateFitData$time)
+
+MCGrowthRateFitData <- MCGrowthRateFitData %>% 
+  mutate(ToD=as.numeric(ToD)) %>% 
+  mutate(time=as.numeric(time)) %>% 
+  mutate(Actinic_par = Actinic_par/1000) %>% 
+  rename(time_h=time) 
+  
+
+colnames(MCGrowthRateFitData)
+
+MCGrowthRateFitData <- MCGrowthRateFitData %>%   
+  group_by(SampleID, Day, ToD, time_h) %>% 
+  summarize(deltaOD, time_h, fittedDeltaOD, OD720, Tube, ExpDate, MC, Run, SampleID, Strain, Par_ue, Photoperiod, WL, O2, LightShape, PARPhotonDose_day, OD720_Lmu_se, OD720_Lmu_corr, deltaOD_Lmu_se, deltaOD_Lmu_corr, ToD, Day, Actinic_par, OD680, meanActinic_par_h = mean(Actinic_par), meanOD680_h = mean(OD680), meanOD720_h = mean(OD720), meanDeltaOD_h = mean(deltaOD), meanfittedDeltaOD_h = mean(fittedDeltaOD)) %>%
+  ungroup() %>% 
+  select(-c(Actinic_par, OD680, OD720, deltaOD, fittedDeltaOD)) %>% 
+  unique()
+```
+
+
+# Adding facet labels
+
+```{r}
+MCGrowthRateFitData$facetsPar_ue = factor(MCGrowthRateFitData$O2, labels = c("PAR~(µmol~photons~m^{-2}~s^{-1})"))
+MCGrowthRateFitData$facetsPhotoperiod = factor(MCGrowthRateFitData$WL, labels = c("Photoperiod~(h)"))
+MCGrowthRateFitData$facetsStrain = factor(MCGrowthRateFitData$WL, labels = c("Strain"))
+```
+
+
+# Create GrowthCurve plot with fits
+
+```{r create GrowthCurve plot, warning = FALSE}
+
+MultiCultiDataAll<-MultiCultiDataAll %>% 
+  filter(Run != 77) 
+
+MCGrowthRateFitData %>%
+  filter(Run != 77) %>% 
+  ggplot() +
+  #geom_area(aes(x = time_h, y = meanActinic_par_h), size = 0.1, fill = "tan1", alpha = 0.6) +
+  geom_line(aes(x = Time_h, y = meanDeltaOD_h, colour = as.factor(Strain)), size = 0.7, alpha = 0.2, show.legend = F, MultiCultiDataAll) +
+  geom_line(aes(x = time_h, y = meanfittedDeltaOD_h, colour = as.factor(Strain)), size = 0.7, alpha = 0.9, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="") +
+  # scale_y_continuous(breaks=seq(0, 1, by = 0.25)) +
+  # coord_cartesian(ylim = c(0, 1.0)) +
+  labs(y = "Optical density (\u0394 OD)", x = "Elapsed time (h)") +
+  ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="transparent"),
+        legend.position = c(0.12,0.96),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.x = unit(0.01, 'cm'),
+        legend.text = element_text(size=11))
+```
+
+
+# Save plot 
+
+```{r save plot}
+# ggsave(file = file.path(FigPath, paste("SFig_GrowthCurve_FitPmax",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+
+```{r create GrowthCurve plot, warning = FALSE}
+lab2=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("600 µE"), expression("900 µE"))
+MCGrowthRateFitData %>%
+  filter(Run != 77) %>% 
+  ggplot() +
+  geom_line(aes(x = time_h, y = meanDeltaOD_h, colour = as.factor(Par_ue)), size = 0.4, alpha = 0.4, show.legend = F) +
+  geom_line(aes(x = time_h, y = meanfittedDeltaOD_h, colour = as.factor(Par_ue)), size = 0.7, alpha = 0.9, show.legend = T) +
+  scale_colour_manual(values = c("darkslategray", "lightblue4", "hotpink4", "indianred3",  "goldenrod2", "khaki2"), name="", labels = lab2) +
+  # scale_y_continuous(breaks=seq(0, 1, by = 0.25)) +
+  # coord_cartesian(ylim = c(0, 1.0)) +
+  labs(y = "Optical density (\u0394 OD)", x = "Elapsed time (h)") +
+  ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(Strain), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="transparent"),
+        legend.position = c(0.07,0.94),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.x = unit(0.01, 'cm'),
+        legend.text = element_text(size=11))
+```
+
+# Save plot 
+
+```{r save plot}
+# ggsave(file = file.path(FigPath, paste("SFig_GrowthCurve_FitLightPmax",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+
+# Cleaning df before saving as rds and removed unnecessary files from the environment
+
+```{r cleanifng d}
+#rm(tMaxAGLines_056, tMaxAGLines_077, tMaxAGLines_048, tMaxAGLines_127, tmaxAG, MultiCultiData, MCGrowthRate)
+```
+
+
+
+
+-------------------------------------------------# Whole Logistic fits --------------------------------------------------------
+
+```{r set project variables}
+Project <- "BalticPhotoperiod"
+# DataOut <- file.path("..", "Data", "ProcessedData", "ProcessedMCDielLightData")
+
+FigPath <- file.path("..", "Output", "Figures")
+FigRdsPath <- file.path("..", "Output", "FiguresRds")
+TableRdsPath <- file.path("..", "Output", "TablesRDS")
+```
+
+## Read Data
+```{r data files}
+MCFilesFit <- list.files(path = file.path("..", "Data", "ProcessedData", "ProcessedMCDataLogisticFit"), full.names = TRUE)
+MCFilesFit
+```
+
+```{r read data}
+
+# MCData <- readRDS(file = MCFilesFit[1]) |>
+#   ungroup()
+  
+MCDataAllFit <- map_df(MCFilesFit, readRDS) |>
+  ungroup() 
+```
+
+
+# Select revelant variables and preparing for further analysis
+
+```{r}
+MultiCultiGrowth<-MCDataAllFit %>% 
+  dplyr::select(c(Tube, ExpDate, MC, Run, SampleID, Strain, Par_ue, Photoperiod, WL, O2, LightShape, PARPhotonDose_day, tubedata, deltaOD_logistic_predict))
+
+
+MultiCultiGrowth<-MultiCultiGrowth %>% 
+  mutate(Strain=case_when(Strain=="BA127R"~"PE-rich_127",
+         Strain=="BA48R"~"PE-rich_048",
+        Strain=="BA56G"~"PC-rich_056",
+         Strain=="BA77G"~"PC-rich_077"))
+
+MCGrowthRate<-MultiCultiGrowth 
+
+# MultiCultiGrowth1<-MultiCultiGrowth %>% 
+#   filter(Run==77) %>% 
+#   filter(Strain =="PC-rich_077")
+# MultiCultiGrowth2<-MultiCultiGrowth %>% 
+#   filter(Run==121) %>% 
+#   filter(Strain !="PC-rich_077")
+# MultiCultiGrowth3<-MultiCultiGrowth %>% 
+#   filter(Run!=121 & Run!= 77) 
+# MCGrowthRate<-rbind(MultiCultiGrowth1, MultiCultiGrowth2, MultiCultiGrowth3)
+#   rm(MultiCultiGrowth, MultiCultiGrowth1, MultiCultiGrowth2, MultiCultiGrowth3)
+```
+
+```{r unnest, preparing df to preparing final plot, echo=FALSE, warning = FALSE}
+
+augmentedMCGrowthRateFitDeltaOD<-MCGrowthRate  %>%
+  unnest(deltaOD_logistic_predict) %>%
+  select(c(deltaOD, time, .fitted)) 
+
+augmentedMCGrowthRateTubedata<-MCGrowthRate  %>%
+  unnest(tubedata)
+
+augmentedMCGrowthRateTubedata<-augmentedMCGrowthRateTubedata %>% 
+  select(-c(deltaOD_logistic_predict))
+
+```
+
+# Merge tubedata and fit prediction - OD720
+```{r warning = FALSE}
+
+MCGrowthRateFitDeltaOD <- augmentedMCGrowthRateFitDeltaOD %>%
+  left_join(., augmentedMCGrowthRateTubedata, by = c("deltaOD" = "deltaOD", "time" = "time"))
+MCGrowthRateFitDeltaOD<-MCGrowthRateFitDeltaOD %>% 
+  rename(fittedDeltaOD = .fitted) 
+
+MCGrowthRateFitData<-MCGrowthRateFitDeltaOD
+
+```
+
+
+
+```{r Import Run and calculate mean OD, echo = FALSE, warning = FALSE}
+
+MCGrowthRateFitData$ToD = sub("\\..*", "", MCGrowthRateFitData$ToD)
+MCGrowthRateFitData$time = sub("\\..*", "", MCGrowthRateFitData$time)
+
+MCGrowthRateFitData <- MCGrowthRateFitData %>% 
+  mutate(ToD=as.numeric(ToD)) %>% 
+  mutate(time=as.numeric(time)) %>% 
+  mutate(Actinic_par = Actinic_par/2000) %>% 
+  rename(time_h=time) 
+  
+
+colnames(MCGrowthRateFitData)
+
+MCGrowthRateFitData <- MCGrowthRateFitData %>%   
+  group_by(SampleID, Day, ToD, time_h) %>% 
+  summarize(deltaOD, time_h, fittedDeltaOD, OD720, Tube, ExpDate, MC, Run, SampleID, Strain, Par_ue, Photoperiod, WL, O2, LightShape, PARPhotonDose_day, ToD, Day, Actinic_par, OD680, meanActinic_par_h = mean(Actinic_par), meanOD680_h = mean(OD680), meanOD720_h = mean(OD720), meanDeltaOD_h = mean(deltaOD), meanfittedDeltaOD_h = mean(fittedDeltaOD)) %>%
+  ungroup() %>% 
+  select(-c(Actinic_par, OD680, OD720, deltaOD, fittedDeltaOD)) %>% 
+  unique()
+```
+
+
+# Adding facet labels
+
+```{r}
+MCGrowthRateFitData$facetsPar_ue = factor(MCGrowthRateFitData$O2, labels = c("PAR~(µmol~photons~m^{-2}~s^{-1})"))
+MCGrowthRateFitData$facetsPhotoperiod = factor(MCGrowthRateFitData$WL, labels = c("Photoperiod~(h)"))
+MCGrowthRateFitData$facetsStrain = factor(MCGrowthRateFitData$WL, labels = c("Strain"))
+```
+
+
+# Create GrowthCurve plot with fits
+
+```{r create GrowthCurve plot, fig.height = 8, fig.width = 8, warning = FALSE}
+MCGrowthRateFitData %>%
+  filter(Run != 77) %>% 
+  ggplot() +
+  #geom_area(aes(x = time_h, y = meanActinic_par_h), size = 0.1, fill = "tan1", alpha = 0.6) +
+  geom_line(aes(x = time_h, y = meanDeltaOD_h, colour = as.factor(Strain)), size = 0.3, alpha = 0.4, show.legend = F) +
+  geom_line(aes(x = time_h, y = meanfittedDeltaOD_h, colour = as.factor(Strain)), size = 0.7, alpha = 0.9, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="") +
+  # scale_y_continuous(breaks=seq(0, 1, by = 0.25)) +
+  # coord_cartesian(ylim = c(0, 1.0)) +
+  # labs(y = "Logistic fits of chlorophyll proxy"~OD[680]~"-"~OD[720]~"(\u0394 OD)", x = "Elapsed time (h)") +
+    labs(y = "Logistic fits of chlorophyll proxy"~OD[680]~"-"~OD[720]~"", x = "Elapsed time (h)") +
+  ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="transparent"),
+        legend.position = c(0.12,0.96),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.x = unit(0.01, 'cm'),
+        legend.text = element_text(size=11))
+```
+
+# Save plot 
+
+```{r save plot}
+ggsave(file = file.path(FigPath, paste("SFig_GrowthCurve_Fit",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+
+---------------------------------------------------------- Code from Marta --------------------------------------------
+
+```{r}
+# library(tidyverse)
+# library(lubridate)
+# library(broom)
+# library(knitr)
+# library(zoo)
+# library(xts)
+# library(data.table)
+# library(googledrive)
+# library(googlesheets4)
+# library(signal)
+```
+
+
+
+```{r set project variables}
+Project <- "BalticPhotoperiod"
+#DataOut <- file.path("..", "Data", "ProcessedData", "ProcessedGrowthRateData")
+DataOut <- file.path("..", "Data", "ProcessedData", "ProcessedMCDielLightData")
+DataIn <- file.path("..", "Data", "ImportedData", "ImportedMCData", fsep = .Platform$file.sep)
+
+FigPath <- file.path("..", "Output", "Figures")
+FigRdsPath <- file.path("..", "Output", "FiguresRds")
+TableRdsPath <- file.path("..", "Output", "TablesRDS")
+
+FileEncode <- "UTF-8" 
+Delimiter <- ""
+HeaderRows <- 0
+```
+
+# List and read files
+
+```{r Exported Rmd only first time in session}
+list.files(path = DataIn, full.names = TRUE)
+```
+
+```{r read file}
+fnameFile <- "../Data/ImportedData/ImportedMCData/20211214_PICO_MC247_RUN39_TargetDataMetaFilter.Rds"
+
+fnameFileName <- str_split(string = fnameFile, "/")[[1]][3] %>%
+  str_remove(pattern = ".Rds") 
+
+data <- readRDS(fnameFile)  %>%
+  ungroup()
+
+# data<-data  %>%
+#   unnest(tubedata) %>%
+#   select(c(Filename, Tube, ExpDate, MC, Run, SampleID, Strain, ExpStartTime, Par_ue, Photoperiod, O2, WL, LightShape, ExpEndDate, ExpEndHour, PARPhotonDose_day, time, ToD, Day, Actinic_par, OD680, OD720, deltaOD, ActinicMid_parOD720, ActinicMid_dayOD720, rollmeanOD720, rollmeandeltaOD, lognormOD720, lognormdeltaOD))
+
+```
+
+
+```{r}
+t <- 3
+w <- 5
+nn <- 1
+
+# read in a Rds file
+# fname <- '../Data/ImportedData/ImportedMCData/20211214_PICO_MC247_RUN39_TargetDataMetaFilter.Rds'
+# data <- readRDS(paste0(fname,".Rds"))
+
+
+data$stamp <- data$abs_time; for (i in seq(1,length(data$stamp))){data$stamp[i] <- as.POSIXct(data$abs_time[i])+ minutes(round(data$time[i]*60,0))}
+
+# optionally filter some data
+#index <- which((data$Strain=="BA48R")|(data$Strain=="BA127R")|(data$Strain=="BA56G")|(data$Strain=="BA77G"))
+#data <- data[index,]
+
+# choose the tube number and extract the subset
+dsub <- data[data$Tube == t,]; 
+df = data.frame(x=dsub$time,y=dsub$OD680);
+
+# Add ligh info
+df$par <- round(dsub$Actinic_par,1);
+
+# Smoooth with splines
+dr <- smooth.spline(df$x, y=df$y);
+
+# compute the first derivative
+der <- predict(dr, deriv=1)$y;
+
+# add to the data frame
+df$der <- der;
+df$spline <- dr$y
+
+# extract moment when light turn on/off
+df$par[df$par <= 0.5] <- NA
+df$s <- sign(df$par)
+df$dercut <- df$der * df$s
+
+# save time when light turns on/off, extract OD680 values, and save everything into a new data frame
+start <- list();end <- list();
+for (i in 2:length(df$x)){if (is.na(df$s[i-1])&(!is.na(df$s[i]))){start <- c(start,i)};if (!is.na(df$s[i-1])&(is.na(df$s[i]))){end <- c(end,i-1)}}
+start <- unlist(start)
+end <- unlist(end)
+if (length(start) > length(end)){start <- start[1:(length(start)-1)]}
+l <- length(start)
+ds = data.frame(start = start, end=end, start_v=df$x[start], end_v=df$x[end], v=seq(1:length(end))*0, start_od=df$spline[start], end_od=df$spline[end])	
+
+# cut the first few noisy measurements
+Gmx <- which(der[150:length(der)]==max(der[150:length(der)]))+150-1	
+
+# limit the analyzed time period to +/- (w=5) light periods around the maximum instant growth rate, and determine the local maxima
+lm <- length(which(ds$start < Gmx))
+dc <- rbind(ds[which(ds$start < Gmx)[(lm-w):lm],],ds[which(ds$start > Gmx)[1:w],])
+dc <- na.exclude(dc)
+l <- length(dc$start)
+step <- seq(1:l)*0;tmx<- seq(1:l)*0; mx<- seq(1,l)*0;for (i in 1:l){mx[i] <- max(df$der[dc$start[i]:dc$end[i]]);step[i] <- which(df$der == max(df$der[dc$start[i]:dc$end[i]]));tmx[i] <- df$x[which(df$der == max(df$der[dc$start[i]:dc$end[i]]))]}
+dc$max <- step
+dc$tmx <- tmx
+dc$mx <- mx
+```
+
+#--------------------------------------------------- fit sigmoid curve-----------------------------------
+
+```{r}
+
+#Asym/(1+exp((xmid-input)/scal))
+
+fit <- nls(y ~ SSlogis(x, Asym, xmid, scal), data = df)
+summary(fit)
+df$yy <- predict(fit)
+
+df$par[is.na(df$par)] <- 0
+
+# plot the results
+ggplot(df,aes(x=x,y=spline)) + theme_light() + theme(plot.title = element_text(hjust = 0.5),text = element_text(size = 16)) + geom_line(colour="black")  + scale_x_continuous(name="Elapsed time (h)",breaks=seq(0,360,24)) + geom_line(aes(y=s-1),col="tan1",lwd=2) + geom_vline(xintercept = tmx, linetype="dashed", col="#a02a2a", lwd=.9) + geom_line(aes(y=yy),col="#a02a2a",lwd=1.5)  + scale_y_continuous(name="Optical density (OD680)", sec.axis = sec_axis( trans=~./25, name="1st derivative of OD680")) + geom_line(aes(x=x,y=der*25)) + geom_vline(xintercept = 149, col="darkgreen", lwd=1.1) + geom_area(aes(y=par/max(par)*max(spline)),fill="tan1",alpha=.3)  + ggtitle(paste0("Strain: ",dsub$Strain[1],", Par_ue: ",dsub$Par_ue[1],",  Photoperiod[h]: ",dsub$Photoperiod[1]))
+ggsave(paste0('Example_curve.png'),width=12,height=6)
+
+
+```
+
+# Create df for plot only
+
+```{r}
+
+MMPlot<-MultiCultiDataAll %>%
+  filter(Run == 39) %>%
+  filter(Strain == "PE-rich_048") %>%
+  filter(Par_ue == 180)
+```
+
+# Plot
+
+```{r fig.height = 8, fig.width = 8, warning = FALSE}
+data_textExp <- data.frame(Strain  = c("PE-rich_048"), label = c('Exponential'))
+data_textSt <- data.frame(Strain  = c("PE-rich_048"), label = c('Pre-stationary'))
+
+data_textAHG <- data.frame(Strain  = c("PE-rich_048"), label = c('tMaxAHG'))
+data_textAHG <- data.frame(Strain  = c("PE-rich_048"), label = c('tMaxHG'))
+
+Photoperiod.labs <- c("Phase of growth")
+names(Photoperiod.labs) <- c("12")
+
+MMPlot %>% 
+ggplot() + 
+  geom_line(aes(x=x, y=der*25), df) + 
+  geom_line(aes(x=x, y=s-1),col="tan1",lwd=1, df) + 
+  geom_line(aes(x = Time_h, y = meanOD680_h, colour = as.factor(Strain)), size = 1, show.legend = F) +
+  # geom_line(colour="black")  + 
+  # geom_line(aes(y=yy),col="blue",lwd=1.0)  + 
+  geom_area(aes(x=x, y=par/max(par)*max(spline)),fill="tan1", alpha=0.3, df) +
+  geom_vline(xintercept = 149, linetype = "dotdash", col="brown1", lwd=0.7) + 
+  #geom_hline(yintercept = 1, linetype = "solid", col="black", lwd=0.4) + 
+  #geom_vline(xintercept = tmx, linetype="dashed", col="black", lwd=0.4) + 
+  geom_text(data=data_textExp, aes(x=72, y=1.0, label=label), size=4.3) +
+  geom_text(data=data_textSt, aes(x=240, y=1.0, label=label), size=4.3) +
+  scale_y_continuous(sec.axis = sec_axis( trans=~./25, name="1"^st~"derivative of"~OD[680]~"")) + 
+  scale_x_continuous(breaks=seq(0,360,24)) + 
+  coord_cartesian(ylim = c(-0.2, 1.0)) +
+  labs(y = "Optical density ("~OD[680]~")", x = "Elapsed time (h)") +
+  ggh4x::facet_nested(cols = vars(Photoperiod),labeller = labeller(WL = label_both, Photoperiod = Photoperiod.labs)) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="transparent"),
+        legend.position = c(0.12,0.96),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.x = unit(0.01, 'cm'),
+        legend.text = element_text(size=11))
+```
+
+# Save plot 
+
+```{r save plot}
+ggsave(file = file.path(FigPath, paste("Fig_FirstDerivative",".png",sep = "")), height=4.5, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+
+---------------------------------------- Growth Symmetry Paper --------------------------------------------------------------
+
+# Plot
+
+```{r fig.height = 8, fig.width = 8, warning = FALSE}
+data_textA <- data.frame(Strain  = c("PE-rich_048"), label = c('A'))
+data_textAHG <- data.frame(Strain  = c("PE-rich_048"), label = c('tMaxAHG'))
+data_textAHG <- data.frame(Strain  = c("PE-rich_048"), label = c('tMaxHG'))
+
+#df$par[is.na(df$par)] <- 0
+
+PlotA<-MMPlot %>% 
+ggplot() + 
+  geom_line(aes(x=x, y=der*25), df) + 
+  geom_line(aes(x=x, y=s-1),col="tan1",lwd=1, df) + 
+  geom_line(aes(x = Time_h, y = meanOD680_h, colour = as.factor(Strain)), size = 1, show.legend = F) +
+  # geom_line(colour="black")  + 
+  # geom_line(aes(y=yy),col="blue",lwd=1.0)  + 
+  geom_area(aes(x=x, y=par/max(par)*max(spline)),fill="tan1", alpha=0.3, df) +
+  geom_vline(xintercept = 149, col="blue", lwd=0.7) + 
+  geom_vline(xintercept = tmx, linetype="dashed", col="black", lwd=0.4) + 
+  geom_text(data=data_textA, aes(x=336, y=1, label=label), size=4.5) +
+  scale_y_continuous(sec.axis = sec_axis( trans=~./25, name="1"^st~"derivative of"~OD[680]~"")) + 
+  scale_x_continuous(breaks=seq(0,360,24)) + 
+  coord_cartesian(ylim = c(-0.2, 1.0)) +
+  labs(y = "Optical density ("~OD[680]~")", x = "Elapsed time (h)") +
+  # ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="transparent"),
+        legend.position = c(0.12,0.96),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.x = unit(0.01, 'cm'),
+        legend.text = element_text(size=11))
+PlotA
+```
+
+# Save plot 
+
+```{r save plot}
+# ggsave(file = file.path(FigPath, paste("Fig_FirstDerivative",".png",sep = "")), height=4.5, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+```{r fig.height = 8, fig.width = 8, warning = FALSE}
+# tmx
+
+arrowdf1 <- tibble(Strain = "PE-rich_048")
+arrowdf2 <- tibble(Strain = "PE-rich_048")
+data_textAccLen <- data.frame(Strain  = c("PE-rich_048"), label = c('AccLen (h)'))
+data_textDecLen <- data.frame(Strain  = c("PE-rich_048"), label = c('DecLen (h)'))
+data_textB <- data.frame(Strain  = c("PE-rich_048"), label = c('B'))
+
+dfCut<-df %>% 
+  filter(x>160) %>% 
+  filter(x<190)
+
+MMPlotCut<-MMPlot %>% 
+  filter(Time_h>160) %>% 
+  filter(Time_h<190)
+
+
+PlotB<-MMPlotCut %>% 
+ggplot() + 
+  geom_line(aes(x=x, y=der*25), dfCut) + 
+  geom_line(aes(x=x, y=s-1),col="tan1",lwd=1, dfCut) + 
+  geom_line(aes(x = Time_h, y = meanOD680_h, colour = as.factor(Strain)), size = 1, show.legend = F) +
+  geom_area(aes(x=x, y=par/max(par)*max(spline)),fill="tan1", alpha=0.3, dfCut) +
+  geom_vline(xintercept = 172.16667, linetype="dashed", col="black", lwd=0.4) +
+  geom_segment(data = arrowdf1, aes(x = 165, xend = 170, y = 0.1, yend = 0),
+               colour = "black", size = 0.5, alpha=0.9, arrow = arrow(length=unit(0.2, 'cm'))) +
+  geom_segment(data = arrowdf2, aes(x = 180, xend = 175, y = 0.1, yend = 0),
+               colour = "black", size = 0.5, alpha=0.9, arrow = arrow(length=unit(0.2, 'cm'))) +
+  geom_text(data=data_textAccLen, aes(x=165, y=0.125, label=label), size=3.5) +
+  geom_text(data=data_textDecLen, aes(x=182, y=0.125, label=label), size=3.5) +
+  geom_text(data=data_textB, aes(x=190, y=1, label=label), size=4.5) +
+  scale_y_continuous(sec.axis = sec_axis( trans=~./25, name="1"^st~"derivative of"~OD[680]~"")) +
+  scale_x_continuous(breaks=seq(150, 200, by = 10)) +
+  coord_cartesian(ylim = c(-0.2, 1.0)) +
+  # scale_y_continuous(breaks=seq(0, 30, by = 10)) +
+  # coord_cartesian(xlim = c(0, 80000000), ylim = c(0, 30)) +
+  labs(y = "Optical density ("~OD[680]~")", x = "Elapsed time (h)") +
+  # ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12),
+        axis.title.y = element_text(margin=margin(r=10)),
+        axis.title.x = element_text(margin=margin(t=10)),
+        legend.background = element_rect(fill="transparent"),
+        legend.position = c(0.12,0.96),
+        legend.key.height= unit(0.005, 'cm'),
+        legend.spacing.x = unit(0.01, 'cm'),
+        legend.text = element_text(size=11))
+PlotB
+```
+# Merge two plots into one with panel A and B
+
+```{r Final Plot arrange, warning = FALSE, fig.height = 8, fig.width = 8}
+ggarrange(PlotA,PlotB,
+          ncol = 1, nrow = 2)
+```
+
+# Save plot 
+
+```{r save plot}
+ggsave(file = file.path(FigPath, paste("Fig_FirstDerivativeAB",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+
+
+
+------------------------------------------- Hourly growth -------------------------------------------------------
+
+```{r}
+# library(tidyverse)
+# library(broom)
+# library(knitr)
+# library(zoo)
+# library(xts)
+# library(data.table)
+# library(googledrive)
+# library(googlesheets4)
+# library(signal)
+```
+
+
+```{r set project variables}
+Project <- "BalticPhotoperiod"
+DataOut <- file.path("..", "Data", "ImportedData", "ImportedHourlyGrowth")
+DataIn <- file.path("..", "Data", "ImportedData", "ImportedMCData", fsep = .Platform$file.sep)
+
+FigPath <- file.path("..", "Output", "Figures")
+FigRdsPath <- file.path("..", "Output", "FiguresRds")
+TableRdsPath <- file.path("..", "Output", "TablesRDS")
+
+FileEncode <- "UTF-8" 
+Delimiter <- ""
+HeaderRows <- 0
+```
+
+Run only first time in session
+
+```{r list tidied data files}
+list.files(path = DataIn, pattern = Project, full.names = TRUE)
+```
+
+ [1] "../Data/ImportedData/ImportedMCData/20211214_PICO_MC247_RUN39_TargetDataMetaFilter.Rds" 
+ [2] "../Data/ImportedData/ImportedMCData/20211223_PICO_MC257_RUN40_TargetDataMetaFilter.Rds" 
+ [3] "../Data/ImportedData/ImportedMCData/20211229_PICO_MC247_RUN43_TargetDataMetaFilter.Rds" 
+ [4] "../Data/ImportedData/ImportedMCData/20220107_PICO_MC257_RUN44_TargetDataMetaFilter.Rds" 
+ [5] "../Data/ImportedData/ImportedMCData/20220113_PICO_MC247_RUN45_TargetDataMetaFilter.Rds" 
+ [6] "../Data/ImportedData/ImportedMCData/20220122_PICO_MC257_RUN46_TargetDataMetaFilter.Rds" 
+ [7] "../Data/ImportedData/ImportedMCData/20220206_PICO_MC257_RUN50_TargetDataMetaFilter.Rds" 
+ [8] "../Data/ImportedData/ImportedMCData/20220405_PICO_MC247_RUN60_TargetDataMetaFilter.Rds" 
+ [9] "../Data/ImportedData/ImportedMCData/20220410_PICO_MC257_RUN62_TargetDataMetaFilter.Rds" 
+[10] "../Data/ImportedData/ImportedMCData/20220420_PICO_MC257_RUN65_TargetDataMetaFilter.Rds" 
+[11] "../Data/ImportedData/ImportedMCData/20220507_PICO_MC257_RUN71_TargetDataMetaFilter.Rds" 
+[12] "../Data/ImportedData/ImportedMCData/20220607_PICO_MC257_RUN74_TargetDataMetaFilter.Rds" 
+[13] "../Data/ImportedData/ImportedMCData/20220615_PICO_MC257_RUN77_TargetDataMetaFilter.Rds" 
+[14] "../Data/ImportedData/ImportedMCData/20230816_PICO_MC257_RUN121_TargetDataMetaFilter.Rds"
+
+```{r echo=FALSE}
+fnameFile <- "../Data/ImportedData/ImportedMCData/20211214_PICO_MC247_RUN39_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20211223_PICO_MC257_RUN40_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20211229_PICO_MC247_RUN43_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20220107_PICO_MC257_RUN44_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20220113_PICO_MC247_RUN45_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20220122_PICO_MC257_RUN46_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20220206_PICO_MC257_RUN50_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20220405_PICO_MC247_RUN60_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20220410_PICO_MC257_RUN62_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20220420_PICO_MC257_RUN65_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20220507_PICO_MC257_RUN71_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20220607_PICO_MC257_RUN74_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20220615_PICO_MC257_RUN77_TargetDataMetaFilter.Rds"
+#fnameFile <- "../Data/ImportedData/ImportedMCData/20230816_PICO_MC257_RUN121_TargetDataMetaFilter.Rds"
+
+fnameFileName <- str_split(string = fnameFile, "/")[[1]][3] %>%
+  str_remove(pattern = ".Rds") 
+
+data <- readRDS(fnameFile) %>%
+  ungroup()
+
+w <- 5
+nn <- 1
+
+# Create a list to store the results
+outputList <- list()
+
+print(paste0("nn, Strain, Par_ue,  Photoperiod[h], start[step], end[step], Tstart[minutes],Tend[minutes],OD680start,OD680end,log10(OD680start),log10(OD680end),logDiff,Diff"))
+
+for (t in unique(data$Tube)){
+  dsub <- data[data$Tube == t,]; 
+  df = data.frame(x = dsub$time, y = dsub$OD680);
+  df$par <- round(dsub$Actinic_par, 1);
+  dr <- smooth.spline(df$x, y = df$y);
+  der <- predict(dr, deriv = 1)$y;
+  df$der <- der;
+  df$spline <- dr$y;
+
+  hours <- seq(1, max(df$x));
+  start <- 1; 
+  for (i in 1:length(hours)){
+    diff <- abs(df$x - hours[i]); 
+    ind <- which(diff == min(diff))[1]
+    od_1 <- df$spline[start]; 
+    od_2 <- df$spline[ind]; 
+    result <- c(nn, dsub$Strain[1], dsub$Par_ue[1], dsub$Photoperiod[1], start, ind, df$x[start], df$x[ind], od_1, od_2, log10(od_1), log10(od_2), (log10(od_2) - log10(od_1)), 10^(log10(od_2) - log10(od_1)))
+    print(result)
+    outputList[[nn]] <- result
+    nn <- nn + 1
+    start <- start + (ind - start) + 1
+  }
+}
+
+# Convert the list to a data frame
+outputData <- do.call(rbind, outputList)
+
+# Assign column names to the data frame
+colnames(outputData) <- c("nn", "Strain", "Par_ue", "Photoperiod", "start[step]", "end[step]", "Tstart[minutes]", "Tend[minutes]", "OD680start", "OD680end", "log10(OD680start)", "log10(OD680end)", "logDiff", 'Diff')
+
+outputData<-as.data.frame(outputData)  
+
+outputData$Run<-121 
+outputData_121<-outputData %>% 
+  mutate(across(.cols = c(Par_ue:Diff), .fns = as.numeric)) 
+```
+
+
+```{r}
+# outputData<-rbind(outputData_39, outputData_40, outputData_43, outputData_44, outputData_45, outputData_46, outputData_50, outputData_60, outputData_62, outputData_65, outputData_71, outputData_74, outputData_77, outputData_121)
+```
+
+
+# Save the data frame as an RDS file
+
+```{r save rds}
+ # saveRDS(object = outputData, file = file.path(DataOut, paste(fnameFileName, "hourlyGrowth.Rds",  sep = "_")), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+# Hourly growth - output as csv
+
+```{r}
+
+# fnameFile <- "../Data/ImportedData/ImportedMCData/20211214_PICO_MC247_RUN39_TargetDataMetaFilter.Rds"
+# 
+# fnameFileName <- str_split(string = fnameFile, "/")[[1]][3] %>%
+#   str_remove(pattern = ".Rds") 
+# 
+# data <- readRDS(fnameFile) %>%
+#   ungroup()
+# 
+# w <- 5
+# nn <- 1
+# 
+# # Update the output file path here
+# outputFilePath <- file.path(DataOut, paste0(fnameFileName, "20211214_PICO_MC247_RUN39_hourlyGrowth.csv"))
+# sink(outputFilePath, append = TRUE)
+# 
+# print(paste0("nn, Strain, Par_ue,  Photoperiod[h], start[step], end[step], Tstart[minutes],Tend[minutes],OD680start,OD680end,log10(OD680start),log10(OD680end),logDiff,Diff"), append = TRUE)
+# 
+# for (t in unique(data$Tube)){
+#   dsub <- data[data$Tube == t,]; 
+#   df = data.frame(x = dsub$time, y = dsub$OD680);
+#   df$par <- round(dsub$Actinic_par, 1);
+#   dr <- smooth.spline(df$x, y = df$y);
+#   der <- predict(dr, deriv = 1)$y;
+#   df$der <- der;
+#   df$spline <- dr$y;
+# 
+#   hours <- seq(1, max(df$x));
+#   start <- 1; 
+#   for (i in 1:length(hours)){
+#     diff <- abs(df$x - hours[i]); 
+#     ind <- which(diff == min(diff))[1]
+#     od_1 <- df$spline[start]; 
+#     od_2 <- df$spline[ind]; 
+#     print(paste0(nn, ",", dsub$Strain[1], ",", dsub$Par_ue[1], ",", dsub$Photoperiod[1], ",", start, ",", ind, ",", df$x[start], ",", df$x[ind], ",", od_1, ",", od_2, ",", log10(od_1), ",", log10(od_2), ",", (log10(od_2) - log10(od_1)), ",", 10^(log10(od_2) - log10(od_1))))
+#     nn <- nn + 1
+#     start <- start + (ind - start) + 1
+#   }
+# }
+# 
+# sink()
+```
+
+
+
+
+
+
