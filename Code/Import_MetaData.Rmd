@@ -1,6 +1,7 @@
 ---
 title: "Import_MetaData"
 author:
+- Mireille Savoie
 - Sylwia Sliwinska-Wilczewska
 - Douglas A. Campbell
 date: "`r format(Sys.Date())`"

@@ -2,6 +2,7 @@
 title: "Process_GrowthRateSolisenseLRCData"
 author:
 - Sylwia Sliwinska-Wilczewska
+- Mireille Savoie
 - Douglas A. Campbell
 date: "`r format(Sys.Date())`"
 output:
@@ -28,7 +29,8 @@ knitr::opts_chunk$set(fig.path='Figs/')
 
 # Introduction
 
-Process_GrowthRateSolisenseLRCData.Rmd processes and combines BalticPhotoperiod_Processed_GrowthRate.Rds from Data/ProcessedData/ProcessedGrowthRateData folder and BalticPhotoperiod_Processed_SolisensePigmentsExp.Rds from Data/ProcessedData/ProcessedSolisenseData folder. This .Rmd generates xxx.Rds (stored in xxxa folder) and xxx_Plot.png (stored in Output/Plots folder).
+Process_GrowthRateSolisenseLRCData.Rmd processes and combines PicoDiel_Processed_GrowthRateAll.Rds from ProcessedGrowthRateData folder and PicoDiel_Processed_SolisenseJVPSII.Rds from ProcessedSolisenseData folder. 
+This .Rmd generates PicoDiel_Processed_GrowthJVPSII.Rds (stored in ProcessedGrowthRateSolisenseData folder) and plots (stored in Output/Plots folder).
 
 # Load Libraries and set Project Variables
 
@@ -1355,20 +1357,6 @@ colnames(GrowthRateSoliExpDaySmall)
 6.02*10e23 = 6.02e+24
 6.02e+24/1000000 = 6.02e+18 ->umol e
 
-
-
-# Save assembled spectra data set
-```{r save Olis}
-
-saveRDS(SolFitsAllPigmentTurnerDay, file.path(DataOut, paste(Project, "Processed_GrowthRateSolisense.Rds", sep = "_"), fsep = .Platform$file.sep))
-
-```
-
-# Variable names used in Data Dictionary
-
-```{r}
-# colnames(SolFitsAllPigmentTurnerDay)
-```
 
 
 

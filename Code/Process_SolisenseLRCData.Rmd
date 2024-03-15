@@ -1,6 +1,7 @@
 ---
-title: "Import_SolisenseLRCData"
+title: "Process_SolisenseLRCData"
 author:
+- Mireille Savoie
 - Sylwia Sliwinska-Wilczewska
 - Douglas A. Campbell
 date: "`r format(Sys.Date())`"
@@ -28,7 +29,7 @@ knitr::opts_chunk$set(fig.path='Figs/')
 
 # Introduction
 
-Import_SolisenseDataLRC.Rmd imports BalticPhotoperiod_Imported_SolisenseLight_LRC.Rds. 
+Process_SolisenseLRCData.Rmd process PicoDiel_Imported_SolisenseLight_LRC.Rds stored in ImportedSolisenseData folder, process Turner Catalog (google sheet) and PicoDiel_Processed_PigmentsAll.Rds stored in ProcessedPigmentsData folder (contained cell/L for each ToD) and creates PicoDiel_Processed_SolisenseJVPSII.Rds stored in ProcessedSolisenseData folder.
 
 # Load Libraries
 
@@ -540,7 +541,7 @@ colnames(SolFitsMeta)
 # Save Rds for further analysis
 
 ```{r save rds}
-saveRDS(SolFitsMetaLRCGrowth, file.path(DataOut, paste(Project, "Imported_Solisense_LRC.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+# saveRDS(SolFitsMetaLRCGrowth, file.path(DataOut, paste(Project, "Imported_Solisense_LRC.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
 ```
 
 
@@ -880,155 +881,15 @@ SolFitsAllExpSt %>%
 
 ```{r save rds}
 saveRDS(SolFitsAllExpSt, file.path(DataOut, paste(Project, "Processed_SolisenseJVPSII.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
-
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
---------------------------------------# Choose cooresponding PAR for Sig  ----------------------------------------------------
-
-# Choosen Sigma from corresponding light
-
-```{r data taken from corresponding light calibration}
-SolFitsTrimMetaClean30 <- SolFitsMetaRaw %>%
-  filter(Dark1s == 0) %>%
-  filter(Par_ue == 30) %>%
-  filter(ActPAR == 20) # 39.5 for 445 and 48.7 for 590
-
-SolFitsTrimMetaClean90 <- SolFitsMetaRaw %>%
-  filter(Dark1s == 0) %>%
-  filter(Par_ue == 90) %>%
-  filter(ActPAR == 40) # 79.0 for 445 and 97.5 for 590
-
-SolFitsTrimMetaClean180 <- SolFitsMetaRaw %>%
-  filter(Dark1s == 0) %>%
-  filter(Par_ue == 180) %>%
-  filter(ActPAR == 80) # 158.1 for 445 and 195.0 for 590
-
-SolFitsTrimMetaClean300 <- SolFitsMetaRaw %>%
-  filter(Dark1s == 0) %>%
-  filter(Par_ue == 300) %>%
-  filter(ActPAR == 160) # 316.2 for 445 and 390.0 for 590
-
-SolFitsTrimMetaClean600 <- SolFitsMetaRaw %>%
-  filter(Dark1s == 0) %>%
-  filter(Par_ue == 600) %>%
-  filter(ActPAR == 320) # 632.5 for 445 and 780.1 for 590
-
-SolFitsTrimMetaClean900 <- SolFitsMetaRaw %>%
-  filter(Dark1s == 0) %>%
-  filter(Par_ue == 900) %>%
-  filter(ActPAR == 320) # 632.5 for 445 and 780.1 for 590
-
-SolFitsTrimMetaClean<-rbind(SolFitsTrimMetaClean30, SolFitsTrimMetaClean90, SolFitsTrimMetaClean180, SolFitsTrimMetaClean300, SolFitsTrimMetaClean600, SolFitsTrimMetaClean900)
-
-rm(SolFitsTrimMetaClean30, SolFitsTrimMetaClean90, SolFitsTrimMetaClean180, SolFitsTrimMetaClean300,  SolFitsTrimMetaClean600, SolFitsTrimMetaClean900)
-```
-
-# Choosen Sigma measured from 1s in dark after corresponding light
-
-```{r data taken from 1s of dark after corresponding light calibration}
-SolFitsTrimMetaDarkafterLight30 <- SolFitsMetaRaw %>%
-  filter(Dark1s == 1) %>%
-  filter(ActPAR == 0) %>%
-  filter(Par_ue == 30) %>%
-  filter(LR_s==13|LR_s==14|LR_s==15|LR_s==16|
-         LR_s==118|LR_s==119|LR_s==120|LR_s==112|LR_s==122)
-
-SolFitsTrimMetaDarkafterLight90 <- SolFitsMetaRaw %>%
-  filter(Dark1s == 1) %>%
-  filter(ActPAR == 0) %>%
-  filter(Par_ue == 90) %>%
-  filter(LR_s==26|LR_s==27|LR_s==28|LR_s==29|
-         LR_s==105|LR_s==106|LR_s==107|LR_s==108)
-
-SolFitsTrimMetaDarkafterLight180 <- SolFitsMetaRaw %>%
-  filter(Dark1s == 1) %>%
-  filter(ActPAR == 0) %>%
-  filter(Par_ue == 180) %>%
-  filter(LR_s==40|LR_s==41|LR_s==42|LR_s==43|
-         LR_s==92|LR_s==93|LR_s==94|LR_s==95)
-
-SolFitsTrimMetaDarkafterLight300 <- SolFitsMetaRaw %>%
-  filter(Dark1s == 1) %>%
-  filter(ActPAR == 0) %>%
-  filter(Par_ue == 300) %>%
-  filter(LR_s==53|LR_s==54|LR_s==55|LR_s==56|
-         LR_s==79|LR_s==80|LR_s==81|LR_s==82)
-
-SolFitsTrimMetaDarkafterLight900 <- SolFitsMetaRaw %>%
-  filter(Dark1s == 1) %>%
-  filter(ActPAR == 0) %>%
-  filter(Par_ue == 900 | Par_ue == 600) %>%
-  filter(LR_s==66|LR_s==67|LR_s==68|LR_s==69)
-
-SolFitsTrimMetaDarkafterLight <- rbind(SolFitsTrimMetaDarkafterLight30, SolFitsTrimMetaDarkafterLight90, SolFitsTrimMetaDarkafterLight180, SolFitsTrimMetaDarkafterLight300, SolFitsTrimMetaDarkafterLight900)
-
-rm(SolFitsTrimMetaDarkafterLight30, SolFitsTrimMetaDarkafterLight90, SolFitsTrimMetaDarkafterLight180, SolFitsTrimMetaDarkafterLight300, SolFitsTrimMetaDarkafterLight900)
-
-SolFitsTrimMetaDarkafterLight <- SolFitsTrimMetaDarkafterLight %>%
-  mutate(Sig1s=Sig*1) %>%
-  mutate(Sig1s_m2psii=Sig_m2psii*1) %>%
-  select(-c(Sig, Sig_m2psii))
-```
-
-```{r convert Sigma}
-SolFitsTrimMetaDarkafterLight <- SolFitsTrimMetaDarkafterLight %>%
-mutate(Sig1s_nm2psii=Sig1s_m2psii*1000000000000000000) 
-```
-
-# Cleaning df before saving as Rds and removed unnecessary files from the environment
-
-```{r Cleaning the environment}
-rm(CultureCatalog, ActPARCrossCal)
-```
-
-
-# Create preliminary plots 
-
-```{r preliminary plot}
-lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
-lab2=c(expression("8 h"), expression("12 h"), expression("16 h"), expression("24 h"))
-lab3=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("900 µE"))
-
-SolFitsTrimMetaClean %>%
-  ggplot() +
-  geom_point(aes(x = Par_ue, y = Sig, colour = as.factor(Strain)), size = 3.5, show.legend = T) +
-  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="", labels = lab1) +
-  facet_grid(rows = vars(Ex_WL), cols = vars(Photoperiod)) +
-  theme_bw()
-
-```
-
-# Save rds for further analysis
-
-```{r save rds}
-# saveRDS(SolFitsTrimMetaClean, file.path(DataOut, paste(Project, "Imported_SolisenseLight1.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
-# 
-# saveRDS(SolFitsTrimMetaDarkafterLight, file.path(DataOut, paste(Project, "Imported_SolisenseDarkafterLight1.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
 ```
 
 # Variable names used in Data Dictionary
 
 ```{r}
-colnames(SolFitsTrimMetaClean)
+colnames(SolFitsAllExpSt)
 ```
 
-# Variable names used in Data Dictionary
 
-```{r}
-colnames(SolFitsTrimMetaDarkafterLight)
-```
 
 
 

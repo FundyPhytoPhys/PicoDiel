@@ -1,6 +1,7 @@
 ---
 title: "Process_GrowthCurveData"
 author:
+- Mireille Savoie
 - Sylwia Sliwinska-Wilczewska
 - Douglas A. Campbell
 date: "`r format(Sys.Date())`"
@@ -28,7 +29,7 @@ knitr::opts_chunk$set(fig.path='Figs/')
 
 # Introduction
 
-Process_GrowthCurveData.Rmd separately processes and combines all .Rds from Data/ImportedData/ImportedMCData folder. This .Rmd generates BalticPhotoperiod_Processed_GrowthCurve.Rds (stored in Data/ProcessedData/ProcessedGrowthCurveData folder) and GrowthCurve_SupPlot.png (stored in Output/Plots folder).
+Process_GrowthCurveData.Rmd separately processes and combines all .Rds from Data/ImportedData/ImportedMCData folder. This .Rmd generates PicoDiel_Processed_GrowthCurve.Rds (stored in Data/ProcessedData/ProcessedGrowthCurveData folder) and GrowthCurve_SupPlot.png (stored in Output/Plots folder).
 
 # Load Libraries and set Project Variables
 

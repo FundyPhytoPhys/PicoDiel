@@ -3,6 +3,7 @@ title: "MCDielLight"
 author:
 - Douglas A. Campbell
 - Sylwia Wilczewska-Wilinska
+- Mireille Savoie
 date: "`r format(Sys.Date())`"
 bibliography: Prochlorococcus_O2_NPQ.bib
 csl: plos-one.csl
@@ -10,17 +11,11 @@ editor_options:
   markdown: 
     wrap: 72
 ---
-# This Rmd loads previously imported,  tidied data from the PSI MC and generates estimates of hourly and diel cumulative photon dose to cultures.
+# Introduction
+
+# This Rmd loads previously imported, tidied data from the PSI MC and generates estimates of hourly and diel cumulative photon dose to cultures.
 
 # Set Options
-
-## Set figure caption font size
-
-```{css, echo=FALSE}
-p.caption {
-  font-size: 18px;
-}
-```
 
 ## Set Chunk Options
 
@@ -374,7 +369,38 @@ MCImportAll <- MCImportAll %>%
 
 # Create preliminary plot
 
-```{r fig.height = 8, fig.width = 8, warning = FALSE}
+```{r warning = FALSE}
+#https://jmsallan.netlify.app/blog/the-brewer-palettes/
+myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
+sc <- scale_colour_gradientn(colours = myPalette(10))
+
+MCImportAll %>%
+  filter(time<250) %>% 
+  filter(time>70) %>% 
+  filter(Par_ue == 300) %>% 
+  filter(Photoperiod == 12) %>% 
+  filter(Strain == "PC-rich_077") %>% 
+  ggplot() +
+  #geom_point(aes(x = time, y = mu_deltaODwindow), alpha = 0.4) +
+  geom_point(aes(x = time, y = mu_Averh, colour = Actinic_photonsm2h), alpha = 0.9) +
+  #geom_line(aes(x = time, y = svr_pred), color = 'blue', size = 0.7) +
+  geom_line(aes(x = time, y = mu_Averh)) +
+  sc +
+  facet_grid(rows = vars(Strain), cols = vars (Photoperiod)) +
+  theme_bw()
+
+```
+
+
+# Save plot 
+
+```{r save plot}
+ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRateExample1",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+```
+
+# Create preliminary plot
+
+```{r warning = FALSE}
 #https://jmsallan.netlify.app/blog/the-brewer-palettes/
 myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
 sc <- scale_colour_gradientn(colours = myPalette(10))
@@ -437,35 +463,18 @@ MCImportAll %>%
   facet_grid(rows = vars(Strain), cols = vars (Photoperiod)) +
   theme_bw()
 
-
-MCImportAll %>%
-  filter(time<250) %>% 
-  filter(time>70) %>% 
-  filter(Par_ue == 300) %>% 
-  filter(Photoperiod == 12) %>% 
-  filter(Strain == "PC-rich_077") %>% 
-  ggplot() +
-  #geom_point(aes(x = time, y = mu_deltaODwindow), alpha = 0.4) +
-  geom_point(aes(x = time, y = mu_Averh, colour = Actinic_photonsm2h), alpha = 0.9) +
-  #geom_line(aes(x = time, y = svr_pred), color = 'blue', size = 0.7) +
-  geom_line(aes(x = time, y = mu_Averh)) +
-  sc +
-  facet_grid(rows = vars(Strain), cols = vars (Photoperiod)) +
-  theme_bw()
-
 ```
-
 
 # Save plot 
 
 ```{r save plot}
-ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRateExample",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRateExample2",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
 ```
 
 
 # Create GrowthCurve plot
 
-```{r create GrowthCurve plot, fig.height = 8, fig.width = 8, warning = FALSE}
+```{r create GrowthCurve plot, warning = FALSE}
 lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
 
 MCImportAll %>%
@@ -514,13 +523,13 @@ MCImportAll %>%
 # Save plot 
 
 ```{r save plot}
-ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_056",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+# ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_056",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
 ```
 
 
 # Create GrowthCurve plot
 
-```{r create GrowthCurve plot, fig.height = 8, fig.width = 8, warning = FALSE}
+```{r create GrowthCurve plot, warning = FALSE}
 lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
 
 MCImportAll %>%
@@ -569,12 +578,12 @@ MCImportAll %>%
 # Save plot 
 
 ```{r save plot}
-ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_077",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+# ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_077",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
 ```
 
 # Create GrowthCurve plot
 
-```{r create GrowthCurve plot, fig.height = 8, fig.width = 8, warning = FALSE}
+```{r create GrowthCurve plot, warning = FALSE}
 lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
 
 MCImportAll %>%
@@ -623,10 +632,10 @@ MCImportAll %>%
 # Save plot 
 
 ```{r save plot}
-ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_048",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+# ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_048",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
 ```
 
-```{r create GrowthCurve plot, fig.height = 8, fig.width = 8, warning = FALSE}
+```{r create GrowthCurve plot, warning = FALSE}
 lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
 
 MCImportAll %>%
@@ -675,7 +684,7 @@ MCImportAll %>%
 # Save plot 
 
 ```{r save plot}
-ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_127",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
+# ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_127",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
 ```
 
 

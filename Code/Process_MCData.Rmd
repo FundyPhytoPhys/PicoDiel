@@ -41,6 +41,26 @@ Process_MCData.Rmd processes and combines all .Rds from Data/ImportedData/Import
 
 This .Rmd implements logistic growth curve fits to MultiCulti growth trajectories.
 
+
+For Growth Symmetry: Process_MCData.Rmd also creates:
+20211214_PICO_MC247_RUN39_ProcessDataNestGrowthFit.Rds,
+20211223_PICO_MC257_RUN40_ProcessDataNestGrowthFit.Rds,
+20211229_PICO_MC247_RUN43_ProcessDataNestGrowthFit.Rds,
+20220107_PICO_MC257_RUN44_ProcessDataNestGrowthFit.Rds,
+20220113_PICO_MC247_RUN45_ProcessDataNestGrowthFit.Rds,
+20220122_PICO_MC257_RUN46_ProcessDataNestGrowthFit.Rds,
+20220206_PICO_MC257_RUN50_ProcessDataNestGrowthFit.Rds,
+20220405_PICO_MC247_RUN60_ProcessDataNestGrowthFit.Rds,
+20220410_PICO_MC257_RUN62_ProcessDataNestGrowthFit.Rds,
+20220420_PICO_MC257_RUN65_ProcessDataNestGrowthFit.Rds,
+20220507_PICO_MC257_RUN71_ProcessDataNestGrowthFit.Rds,
+20220607_PICO_MC257_RUN74_ProcessDataNestGrowthFit.Rds,
+20220615_PICO_MC257_RUN77_ProcessDataNestGrowthFit.Rds,
+20230816_PICO_MC257_RUN121_ProcessDataNestGrowthFit.Rds,
+
+stored in ProcessedMCDataLogisticFit folder.
+
+
 # Load Libraries and set project variables
 Run only first time in session
 

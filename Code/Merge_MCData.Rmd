@@ -22,12 +22,6 @@ editor_options:
     wrap: 72
 ---
 
-## Set figure caption font size
-```{css, echo=FALSE}
-p.caption {
-  font-size: 25px;
-}
-```
 
 ## Set Chunk Options
 ```{r setup, include = FALSE}
@@ -37,6 +31,7 @@ knitr::opts_chunk$set(fig.path='Figs/')
 
 
 # Introduction
+
 Merge_MCData.Rmd reads in all individually processed MultiCulti runs from the "/Data/ProcessedData/ProcessedMCData" folder and merges the data into 1 data frame. Growth estimate flags are defined based on absolute amplitude change. Growth estimates are set to 0 for models that returned a negative growth estimate and if the absolute amplitude change threshold was not met. For conditions that were replicated, a mean growth estimate was calculated. This single data frame is saved as a .Rds for further analysis called "PICO_Cleaned_MCData.Rds" in the "/Data/CleanedData/CleanedMCData" folder.
 
 

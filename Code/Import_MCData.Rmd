@@ -16,14 +16,6 @@ editor_options:
 
 # Set Options
 
-## Set figure caption font size
-
-```{css, echo=FALSE}
-p.caption {
-  font-size: 18px;
-}
-```
-
 ## Set Chunk Options
 
 ```{r setup, include = FALSE}
