@@ -46,7 +46,7 @@ library("RColorBrewer")
 ```
 
 ```{r set project variables}
-Project <- "BalticPhotoperiod"
+Project <- "PicoDiel"
 DataOut <- file.path("..", "Data", "ProcessedData", "ProcessedMCDielLightData")
 
 FigPath <- file.path("..", "Output", "Figures")
