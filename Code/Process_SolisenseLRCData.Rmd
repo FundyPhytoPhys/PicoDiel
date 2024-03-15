@@ -89,7 +89,7 @@ CultureCatalog<-CultureCatalog %>%
 # Set Project Variables from old software (OS)
 
 ```{r set project variables, read zipped files, list available files, warning = FALSE, echo=FALSE}
-# Project <- "BalticPhotoperiod"
+# Project <- "PicoDiel"
 # DataOut <- file.path("..", "Data", "ImportedData", "ImportedSolisenseData")
 # 
 # zip_file <- file.path("..", "Data", "RawData", "SolisenseOSData.zip")
@@ -163,7 +163,7 @@ CultureCatalog<-CultureCatalog %>%
 # Set Project Variables from new software (NS)
 
 ```{r set project variables, read zipped files, list available files, warning = FALSE, echo=FALSE}
-# Project <- "BalticPhotoperiod"
+# Project <- "PicoDiel"
 # DataOut <- file.path("..", "Data", "ImportedData", "ImportedSolisenseData")
 # 
 # zip_file <- file.path("..", "Data", "RawData", "SolisenseNSData.zip")
@@ -374,10 +374,11 @@ Issue with read_delim_plus reading in files in .zip; filename different on PC an
 
 ------------------------------------------------------------------------------------------------------------------------- 
 
-# Set Project Variables from new software (NS)
+# Set Project Variables 
 
 ```{r set project variables, read zipped files, list available files, warning = FALSE, echo=FALSE}
-Project <- "BalticPhotoperiod"
+Project <- "PicoDiel"
+DataIn <- file.path("..", "Data", "ImportedData", "ImportedSolisenseData")
 DataOut <- file.path("..", "Data", "ProcessedData", "ProcessedSolisenseData")
 
 FigPath <- file.path("..", "Output", "Figures")
@@ -392,7 +393,7 @@ TableRdsPath <- file.path("..", "Output", "TablesRDS")
 # Read Imported Solisense
 
 ```{r read locally stored metadata from rds}
-SolFitsMetaRaw <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedSolisenseData", "BalticPhotoperiod_Imported_SolisenseLight_LRC.Rds"))
+SolFitsMetaRaw <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedSolisenseData", "PicoDiel_Imported_SolisenseLight_LRC.Rds"))
 
 SolFitsMetaRaw<-SolFitsMetaRaw
 ```
@@ -655,7 +656,7 @@ SolFitsExpStTurner %>%
 --------------------------------- Adding cell_L ------------------------------
 
 ```{r set project variables}
-Project <- "BalticPhotoperiod"
+Project <- "PicoDiel"
 DataIn <- file.path("..", "Data", "ProcessedData", "ProcessedPigmentsData", fsep = .Platform$file.sep)
 ```
 
@@ -666,7 +667,7 @@ list.files(path = DataIn, pattern = Project, full.names = TRUE)
 ```{r read pigments File}
 #df ontained mean OD per day from Multiculti and Abs from Olis spectra for selected nm. Based on this I calculated pigments per mL and per cell (pg/cell)
 
-MCPigmentAllFile <- "../Data/ProcessedData/ProcessedPigmentsData/BalticPhotoperiod_Processed_PigmentsAll.Rds"
+MCPigmentAllFile <- "../Data/ProcessedData/ProcessedPigmentsData/PicoDiel_Processed_PigmentsAll.Rds"
 MCPigmentAllFileName <- str_split(string = MCPigmentAllFile, "/")[[1]][3] %>%
   str_remove(pattern = ".Rds")
 MCPigmentAll <- readRDS(MCPigmentAllFile)  %>%
