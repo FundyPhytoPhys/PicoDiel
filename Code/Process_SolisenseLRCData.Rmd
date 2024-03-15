@@ -1,0 +1,1114 @@
+---
+title: "Import_SolisenseLRCData"
+author:
+- Sylwia Sliwinska-Wilczewska
+- Douglas A. Campbell
+date: "`r format(Sys.Date())`"
+output:
+bookdown::html_document2:
+    code_folding: show
+    keep_md: yes
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 6
+    fig_caption: yes
+bibliography: BalticPhotoperiod.bib
+csl: plos-one.csl
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Set Chunk Options
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+knitr::opts_chunk$set(fig.path='Figs/')
+```
+
+# Introduction
+
+Import_SolisenseDataLRC.Rmd imports BalticPhotoperiod_Imported_SolisenseLight_LRC.Rds. 
+
+# Load Libraries
+
+```{r load libraries, warning = FALSE, echo=FALSE} 
+library(tidyverse)
+library(lubridate)
+library(broom)
+library(knitr)
+library(OneR)
+library(zoo)
+library(googledrive)
+library(googlesheets4)
+library(readxl)
+library(Cairo) #for greek symbols
+library(data.table)
+library(purrr)
+library(minpack.lm) #Standard 'nls' framework that uses 'nls.lm' for fitting
+```
+
+# Read ActPARCrossCal Rds from FluorO2Calibrations project existing on GitHub
+
+```{r read existing Rds}
+#"..", "..", takes up two levels in the directory path
+Path <- file.path("..", "..", "FluorO2Calibrations", "CalibrationData")
+
+ActPARCrossCal <- read_rds(file.path(Path, "SolisenseInformation_DCCrossParam.Rds"))
+
+ActPARCrossCal <- ActPARCrossCal %>% 
+  mutate(Slope = `estimate_LIFT_Gen_Developer.cal`,
+         Slope_SE = `std.error_LIFT_Gen_Developer.cal`) %>% 
+  select(c(DCLamp, Models, Slope, Slope_SE))
+
+#intercept set to 0 in lm in SolisenseInformation.Rproj/SolisenseCalibCompare.Rmd
+```
+
+# Set up conversions
+
+```{r conversions}
+us_s <- 1000000
+photons_umol <- 6.022E17 #Avogardo
+A2_m2 <- 1E20 #for sigma -> angstrom (Å) – a metric unit of length equal to 10^−10 m
+```
+
+# Read MetaData
+
+```{r read locally stored metadata from rds}
+CultureCatalog <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedMetaData", "CultureCatalog.Rds"))
+
+CultureCatalog<-CultureCatalog %>% 
+  select(-c(PrimaryOperator, Temp_c, ExpCul, ExpStartTime, O2_Category, Optode, OptodeCh, OptodeMeasure))
+```
+
+
+
+----------------------------------------- Old Software -----------------------------------------------
+
+
+# Set Project Variables from old software (OS)
+
+```{r set project variables, read zipped files, list available files, warning = FALSE, echo=FALSE}
+# Project <- "BalticPhotoperiod"
+# DataOut <- file.path("..", "Data", "ImportedData", "ImportedSolisenseData")
+# 
+# zip_file <- file.path("..", "Data", "RawData", "SolisenseOSData.zip")
+# 
+# SolisenseFilesOS <- unzip(zip_file, list = TRUE)
+# SolisenseFilesOS <- SolisenseFilesOS[grepl(".csv$", SolisenseFilesOS$Name), "Name"]
+# print(SolisenseFilesOS)
+# 
+# FileID <- "fit"
+# FileEncode <- "UTF-8"
+# Delimiter <- ","
+# HeaderRows <- 0
+```
+
+# Set up delim_plus function
+
+```{r set up read_delim_plus, warning = FALSE, echo=FALSE}
+# read_delim_plus <- function(flnm, delimiter, headerrows, fileencode) {
+#   fread(flnm, skip = headerrows, sep = delimiter, header = TRUE, encoding = fileencode) %>%
+#     mutate(Filename = flnm)
+# }
+# 
+# SolFitsOS <- SolisenseFilesOS %>%
+#   map_df(~read_delim_plus(flnm = unzip(zip_file, exdir = tempdir())[which(unzip(zip_file, list = TRUE)$Name == .)], delimiter = Delimiter, headerrows = HeaderRows, fileencode = FileEncode))
+```
+
+# Import and prepare files
+
+```{r tidy SolFitsTrim}
+# SolFitsTrimOS <- SolFitsOS %>%
+#   filter(!grepl("----", DATE)) %>% 
+#   select(-c("RFID_User_Data", "Barcode_Data", "PIF",  "Lon", "Lat", "GPS_stat", "LEDSel", "S/N_raw", "PAR_3", "PAR_4", "PAR_5", "PAR_6", "TPQ_PSI", "QBP_Size", "Alp4QA", "Tau4QA", "Alp1PQ", "Tau1PQ", "Alp2PQ", "Tau2PQ", "Alp3PQ", "Tau3PQ", "ETR", "V58")) %>% # remove superfluous columns for unfit data
+# 
+#   mutate(Filename = str_remove(string = Filename, pattern = "/RawData/SolisenseOS.zip/"),
+#          Filename = str_remove(string = Filename, pattern = "_fit.csv")
+#          ) %>%
+#   separate(Filename, into = c("fp1", "fp2", "fp3", "fp4", "fp5", "fp6", "fp7", "Project", "RunDateTime", "SampleID", "Ex_WL"), sep = "([\\/\\_])", remove = FALSE) %>%
+#   mutate(RunDateTime = ymd_hm(RunDateTime),
+#          TIME = as.character(TIME)) %>%  #time-column may be read in as factor, and as.character changes it to numeric; using lubdridate::hms would only change the format to 13H 4M 2S but does not work later to merge into one DateTime-column
+#   mutate(SourceDataFile = `Source DataFile`,
+#          ObsDate = DATE,
+#          ObsTime = TIME) %>%
+#   mutate(Ex_WL = as.factor(as.numeric(Ex_WL))) %>%
+#   mutate(across(.cols = c(Light_1:fQB), .fns = as.numeric)) %>%
+#   mutate(StartDateTimeSol = RunDateTime) %>%
+#   mutate(nm445 = Light_1,
+#          nm470 = Light_2,
+#          nm505 = Light_3,
+#          nm535 = Light_4,
+#          nm590 = Light_5,
+#          IR = Light_6) %>%
+#   drop_na(StartDateTimeSol) %>%
+#   mutate(ObsTime = hms(ObsTime),
+#          ObsDate = ymd(ObsDate)) %>%
+#   mutate(ObsDateTime = ymd_hms(paste(ObsDate, ObsTime))) %>%
+#   relocate(ObsDateTime, .after = ObsTime) %>%
+#   relocate(SampleID, .before = ObsDate) %>%
+#   #mutate(FvFm=as.numeric(FvFm)) %>%
+#   select(-c(Light_1,Light_2,Light_3,Light_4,Light_5,Light_6,`Source DataFile`,DATE,TIME,RunDateTime, fp1, fp2, fp3, fp4, fp5, fp6, fp7, Project))
+# 
+# #for consistency add TempCont column
+# SolFitsTrimOS <- SolFitsTrimOS %>%
+#   mutate(TempCont = "TC") %>%
+#   mutate(FvFm = Fv/Fm*1) %>%
+#   select(-c("Fv/Fm"))
+```
+
+
+----------------------------------------- New Software -----------------------------------------------
+
+# Set Project Variables from new software (NS)
+
+```{r set project variables, read zipped files, list available files, warning = FALSE, echo=FALSE}
+# Project <- "BalticPhotoperiod"
+# DataOut <- file.path("..", "Data", "ImportedData", "ImportedSolisenseData")
+# 
+# zip_file <- file.path("..", "Data", "RawData", "SolisenseNSData.zip")
+# 
+# SolisenseFilesNS <- unzip(zip_file, list = TRUE)
+# SolisenseFilesNS <- SolisenseFilesNS[grepl(".csv$", SolisenseFilesNS$Name), "Name"]
+# print(SolisenseFilesNS)
+# 
+# FileID <- "fit"
+# FileEncode <- "UTF-8"
+# Delimiter <- ","
+# HeaderRows <- 0
+```
+
+# Set up read_delim_plus function
+
+```{r set up read_delim_plus, warning = FALSE, echo=FALSE}
+# read_delim_plus <- function(flnm, delimiter, headerrows, fileencode) {
+#   fread(flnm, skip = headerrows, sep = delimiter, header = TRUE, encoding = fileencode) %>%
+#     mutate(Filename = flnm)
+# }
+# 
+# SolFitsNS <- SolisenseFilesNS %>%
+#   map_df(~read_delim_plus(flnm = unzip(zip_file, exdir = tempdir())[which(unzip(zip_file, list = TRUE)$Name == .)], delimiter = Delimiter, headerrows = HeaderRows, fileencode = FileEncode))
+```
+
+# Import and prepare files
+Issue with read_delim_plus reading in files in .zip; filename different on PC and MacOS
+
+```{r tidy SolFitsTrim}
+# SolFitsTrimNS <- SolFitsNS %>%
+#   filter(!grepl("----", DATE)) %>% 
+#   select(-c("RFID_User_Data", "Barcode_Data", "PIF",  "Lon", "Lat", "GPS_stat", "LEDSel")) %>% # remove superfluous columns for unfit data
+#   mutate(Filename = str_remove(string = Filename, pattern = "/RawData/SolisenseNSData.zip/"),
+#          Filename = str_remove(string = Filename, pattern = "_fit.csv")
+#          ) %>%
+#   separate(Filename, into = c("fp1", "fp2", "fp3", "fp4", "fp5", "fp6", "fp7", "Project", "RunDateTime", "SampleID", "Ex_WL"), sep = "([\\/\\_])", remove = FALSE) %>%
+#   mutate(RunDateTime = ymd_hm(RunDateTime),
+#          TIME = as.character(TIME)) %>%  #time-column may be read in as factor, and as.character changes it to numeric; using lubdridate::hms would only change the format to 13H 4M 2S but does not work later to merge into one DateTime-column
+#   mutate(SourceDataFile = `Source DataFile`,
+#          ObsDate = DATE,
+#          ObsTime = TIME) %>%
+#   mutate(Ex_WL = as.factor(as.numeric(Ex_WL))) %>%
+#   mutate(across(.cols = c(Light_1:Fv), .fns = as.numeric)) %>%
+#   mutate(StartDateTimeSol = RunDateTime) %>%
+#   mutate(nm445 = Light_1,
+#          nm470 = Light_2,
+#          nm505 = Light_3,
+#          nm535 = Light_4,
+#          nm590 = Light_5,
+#          IR = Light_6) %>%
+# drop_na(StartDateTimeSol) %>% 
+#   mutate(ObsTime = hms(ObsTime),
+#          ObsDate = ymd(ObsDate)) %>%
+#   mutate(ObsDateTime = ymd_hms(paste(ObsDate, ObsTime))) %>%
+#   relocate(ObsDateTime, .after = ObsTime) %>%
+#   relocate(SampleID, .before = ObsDate) %>%
+#   #mutate(FvFm=as.numeric(FvFm)) %>%
+#   select(-c(Light_1,Light_2,Light_3,Light_4,Light_5,Light_6,`Source DataFile`,DATE,TIME,RunDateTime, fp1, fp2, fp3, fp4, fp5, fp6, fp7, Project))
+# 
+# #for consistency add TempCont column
+# SolFitsTrimNS <- SolFitsTrimNS %>%
+#   mutate(TempCont = "TC") %>%
+#   mutate(FvFm = Fv/Fm*1) %>%
+#   select(-c("Fv/Fm"))
+```
+
+
+# Choose the same variables to merge df taken from old and new Solisense software
+
+```{r}
+# SolFitsTrimOS<-SolFitsTrimOS %>% 
+#   select(c(SampleID, Time__mSec, Fo, Fm, Fv, FvFm, Tau1QA, Tau2QA, Tau3QA, Alp1QA, Alp2QA, Alp3QA, Alpha, Ek, Pmax, SourceDataFile, Filename, ObsDate, ObsTime, ObsDateTime, Ex_WL, StartDateTimeSol, nm445, nm470, nm505, nm535, nm590, IR, TempCont, Sig))
+# 
+# SolFitsTrimNS<-SolFitsTrimNS %>% 
+#   select(c(SampleID, Time__mSec, Fo, Fm, Fv, FvFm, Tau1QA, Tau2QA, Tau3QA, Alp1QA, Alp2QA, Alp3QA, Alpha, Ek, Pmax, SourceDataFile, Filename, ObsDate, ObsTime, ObsDateTime, Ex_WL, StartDateTimeSol, nm445, nm470, nm505, nm535, nm590, IR, TempCont, Sig))
+```
+
+# Merge df from old and new Software 
+
+```{r combine data from old and new Software}
+# SolFitsOSNS <-rbind(SolFitsTrimOS, SolFitsTrimNS)
+```
+
+# Add ActPARcorr with proper correction factors for TC and no TC
+
+```{r Add ActPARcorr}
+# #Intercepts for cross conversions set to 0.
+# SolFitsOSNS <- SolFitsOSNS %>% 
+#   mutate(nm445Corr = case_when(TempCont == "TC" ~ nm445 * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "Pwr1_uE" & ActPARCrossCal$Models == "DCWaterJacketlm_tidy"],
+#                                  TempCont == "noTC" ~ nm445 * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "Pwr1_uE" & ActPARCrossCal$Models == "DCCuvettelm_tidy"]),
+#          nm470Corr = case_when(TempCont == "TC" ~ nm470 * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "Pwr2_uE" & ActPARCrossCal$Models == "DCWaterJacketlm_tidy"],
+#                                  TempCont == "noTC" ~ nm470 * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "Pwr2_uE" & ActPARCrossCal$Models == "DCCuvettelm_tidy"]),
+#          nm505Corr = case_when(TempCont == "TC" ~ nm505 * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "Pwr3_uE" & ActPARCrossCal$Models == "DCWaterJacketlm_tidy"],
+#                                  TempCont == "noTC" ~ nm505 * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "Pwr3_uE" & ActPARCrossCal$Models == "DCCuvettelm_tidy"]),
+#            nm535Corr = case_when(TempCont == "TC" ~ nm535 * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "Pwr4_uE" & ActPARCrossCal$Models == "DCWaterJacketlm_tidy"],
+#                                  TempCont == "noTC" ~ nm535 * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "Pwr4_uE" & ActPARCrossCal$Models == "DCCuvettelm_tidy"]),
+#           nm590Corr = case_when(TempCont == "TC" ~ nm590 * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "Pwr5_uE" & ActPARCrossCal$Models == "DCWaterJacketlm_tidy"],
+#                                  TempCont == "noTC" ~ nm590 * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "Pwr5_uE" & ActPARCrossCal$Models == "DCCuvettelm_tidy"]),
+#           IRCorr = case_when(TempCont == "TC" ~ IR * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "PwrIR_uE" & ActPARCrossCal$Models == "DCWaterJacketlm_tidy"],
+#                                  TempCont == "noTC" ~ IR * ActPARCrossCal$Slope[ActPARCrossCal$DCLamp == "PwrIR_uE" & ActPARCrossCal$Models == "DCCuvettelm_tidy"]))
+# 
+# SolFitsOSNS <- SolFitsOSNS %>%
+#   mutate(ActPAR = nm445 + nm470 + nm505 + nm535 + nm590 + IR) %>%  
+#   mutate(ActPARCorr = nm445Corr + nm470Corr + nm505Corr + nm535Corr + nm590Corr + IRCorr)
+```
+
+# Preparing df for further analysis
+
+```{r durations}
+# #generate column with duration of light step in s
+# #add a column adding Dark1s based upon any step < 5 s
+# #replace NA for first dark with nominal 181;  issue will be changing durations of light steps across each run
+# SolFitsOSNS <- SolFitsOSNS %>%
+#   group_by(SourceDataFile, Filename, SampleID, ObsDate, Ex_WL, TempCont) %>%
+#   mutate(Step_s = replace_na(as.numeric(ObsDateTime - lag(ObsDateTime)), 181), .after = ObsDateTime) %>% 
+#   mutate(LR_s = as.numeric(ObsDateTime - ObsDateTime[1]), .after = Step_s) %>%
+#   mutate(Dark1s = if_else(Step_s > 5, 0, 1), .after = Step_s) %>%
+#   relocate(Ex_WL, .after = Dark1s) %>%
+#   relocate(ActPAR, .after = Ex_WL) %>%
+#   ungroup()
+```
+
+# Merge Solisense data with MetaData
+
+```{r combine Solisense and MetaData catalog, warning = FALSE, echo=FALSE}
+# SolFitsMeta <- CultureCatalog %>%
+#   left_join(., SolFitsOSNS, by = c("SampleID" = "SampleID")) 
+```
+
+# Estimate parameters using Oxborough & Baker 1997 for Fo'
+
+```{r estimate parameters, warning = FALSE, echo=FALSE}
+
+# SolFitsMeta <- SolFitsMeta %>%
+#   group_by(SourceDataFile, Filename, SampleID, ObsDate, Ex_WL, TempCont) %>%
+#   mutate(Sig_m2psii = Sig/A2_m2,
+#          Fodark = Fo[1],
+#          Fmdark = Fm[1],
+#          Sigdark = Sig[1],
+#          Sigdark_m2psii = Sigdark/A2_m2,
+#          ActPARCorr_photonsm2s = ActPARCorr *  photons_umol, 
+#          TauAv = ((Tau1QA * Alp1QA) + (Tau2QA * Alp2QA))/(Alp1QA + Alp2QA), 
+#          Ctauav = 1/(1 + (Sig_m2psii * ActPARCorr_photonsm2s * (TauAv/us_s))), 
+#          aLHIIdark = (Fmdark * Fodark)/(Fmdark - Fodark),
+#          Fomin = min(Fo, na.rm = TRUE),
+#          Fmmax = max(Fm, na.rm = TRUE),
+#          Sigmax = max(Sig, na.rm = TRUE),
+#          Sigmax_m2psii = Sigmax/A2_m2,
+#          FoOxbo = Fomin/(((Fmmax - Fomin)/Fmmax) + (Fomin/Fm)),
+#          qpOxbo = (Fm - Fo)/(Fm - FoOxbo),
+#          aLHIIOxbomax = (Fmmax * FoOxbo)/(Fmmax - FoOxbo),
+#          JVPSII_aLHIIOxbomax = ActPARCorr_photonsm2s * aLHIIOxbomax * FvFm,
+#          ETRCtauav = Sig_m2psii * Ctauav * ActPARCorr_photonsm2s,
+#          ETRqpOxbo = Sig_m2psii * qpOxbo * ActPARCorr_photonsm2s,
+#          JVPSII_ETRtauav_FoSig = ETRCtauav * Fomin/Sigmax_m2psii, #Sigmax converted A2_m2
+#          JVPSII_ETRqpOxbo_FoSig = ETRqpOxbo * Fomin/Sigmax_m2psii,
+#          JVPSII_ETRtauav_aLHII_Sig = ETRCtauav * aLHIIOxbomax/Sigmax_m2psii,
+#          JVPSII_ETRqpOxbo_aLHII_Sig = ETRqpOxbo * aLHIIOxbomax/Sigmax_m2psii) %>%
+#   ungroup()
+```
+
+# Convert Sig_m2psii to Sig_nm2psii and Sigdark_m2psii to Sigdark_nm2psii and calculated number of days when measurements were made
+
+```{r convert Sigma}
+# SolFitsMeta <- SolFitsMeta %>%
+# mutate(Sig_nm2psii=Sig_m2psii*1000000000000000000) %>% 
+# mutate(Sigdark_nm2psii=Sigdark_m2psii*1000000000000000000)   
+```
+
+```{r calculate E_days and Time_h}
+# SolFitsMeta<- SolFitsMeta %>%
+# group_by(SampleID) %>%
+#   arrange(ObsDate) %>%
+#   mutate(E_days = as.numeric((ObsDate - ExpDate[1]))) %>%
+# ungroup()
+# 
+# SolFitsMeta<- SolFitsMeta %>%
+#   mutate(Time_h = E_days*24)
+```
+
+```{r}
+# SolFitsMeta<- SolFitsMeta %>%
+#   drop_na(Sig)
+```
+
+# Remove outliers
+
+```{r}
+# SolFitsMeta445<- SolFitsMeta %>%
+#   filter(Ex_WL == 445) %>% 
+#   filter(Sig<250)
+#   
+# SolFitsMeta590<- SolFitsMeta %>% 
+#   filter(Ex_WL == 590)
+# 
+# SolFitsMeta<-rbind(SolFitsMeta445, SolFitsMeta590)
+# 
+# rm(SolFitsMeta445, SolFitsMeta590)
+```
+
+# Save rds for further analysis
+
+```{r save rds}
+# saveRDS(SolFitsMeta, file.path(DataOut, paste(Project, "Imported_SolisenseLight_LRC.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+
+------------------------------------------------------------------------------------------------------------------------- 
+
+# Set Project Variables from new software (NS)
+
+```{r set project variables, read zipped files, list available files, warning = FALSE, echo=FALSE}
+Project <- "BalticPhotoperiod"
+DataOut <- file.path("..", "Data", "ProcessedData", "ProcessedSolisenseData")
+
+FigPath <- file.path("..", "Output", "Figures")
+FigRdsPath <- file.path("..", "Output", "FiguresRds")
+TableRdsPath <- file.path("..", "Output", "TablesRDS")
+# FileID <- "fit"
+# FileEncode <- "UTF-8"
+# Delimiter <- ","
+# HeaderRows <- 0
+```
+
+# Read Imported Solisense
+
+```{r read locally stored metadata from rds}
+SolFitsMetaRaw <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedSolisenseData", "BalticPhotoperiod_Imported_SolisenseLight_LRC.Rds"))
+
+SolFitsMetaRaw<-SolFitsMetaRaw
+```
+
+# Create preliminary plots 
+
+```{r preliminary plot}
+lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
+lab2=c(expression("8 h"), expression("12 h"), expression("16 h"), expression("24 h"))
+lab3=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("900 µE"))
+
+SolFitsMetaRaw %>%
+  ggplot() +
+  geom_point(aes(x = Par_ue, y = Sig, colour = as.factor(Strain)), size = 3.5, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="", labels = lab1) +
+  facet_grid(rows = vars(Ex_WL), cols = vars(Photoperiod)) +
+  theme_bw()
+
+```
+# Change variable names for consistency
+
+```{r}
+SolFitsMetaRaw <- SolFitsMetaRaw %>%
+  rename(FilenameSolisense=Filename)
+```
+
+# Create smaller value to for Platt model
+
+```{r}
+SolFitsMeta<-SolFitsMetaRaw %>%
+  mutate(JVPSII_aLHIIOxbomax = JVPSII_aLHIIOxbomax/1e22) %>%
+  mutate(JVPSII_ETRtauav_FoSig = JVPSII_ETRtauav_FoSig/1e22) %>%
+  mutate(JVPSII_ETRqpOxbo_FoSig = JVPSII_ETRqpOxbo_FoSig/1e22) %>%
+  mutate(JVPSII_ETRtauav_aLHII_Sig = JVPSII_ETRtauav_aLHII_Sig/1e22) %>%
+  mutate(JVPSII_ETRqpOxbo_aLHII_Sig = JVPSII_ETRqpOxbo_aLHII_Sig/1e22)
+```
+
+
+# Create preliminary plots 
+
+```{r preliminary plot}
+lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
+lab2=c(expression("8 h"), expression("12 h"), expression("16 h"), expression("24 h"))
+lab3=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("900 µE"))
+
+SolFitsMeta %>%
+  ggplot() +
+  geom_point(aes(x = ActPARCorr, y = JVPSII_ETRqpOxbo_FoSig, colour = as.factor(Strain)), size = 3.5, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="", labels = lab1) +
+  facet_grid(cols = vars(Ex_WL, Photoperiod), rows = vars(Par_ue)) +
+  theme_bw()
+
+```
+
+
+# Fit LRC for JVPSII to allow selection of specific JVPSII for different growth light levels.
+
+```{r}
+grcplatt <- function(I, a, b, Pmax){Pmax * (1-exp(-a*I/Pmax)) * exp(-b*I/Pmax)}
+
+#`%notin%` <- negate(`%in%`)
+# "ObsDate", "ObsTime","ObsDateTime","E_days", "Time_h", "StartDateTimeSol", "Time_mSec"
+# filter(SampleID %notin% c("SySl1266") | ObsDate %notin% c("2022-06-14") | Ex_WL %notin% c(445)) %>%
+
+SolFitsMetaLRC <- SolFitsMeta %>%
+  nest(data = -c("SampleID", "Run", "Strain" ,"ExpDate","Par_ue", "Photoperiod", "O2", "WL", "MC", "Tube","Ex_WL","LightShape", "ExpEndDate", "PARPhotonDose_day", "ObsDate", "E_days")) %>% #head(50) %>% 
+  mutate(GRCplatt_Model = map(data, possibly(~nlsLM(JVPSII_ETRqpOxbo_FoSig ~ grcplatt(I = ActPARCorr, a, b, Pmax),
+         data = .x,
+         control = list(maxiter = 100),
+         start = list(a = 0.1/30, b = 0.01/800, Pmax = 6),lower = c(0, 0, 0))))) %>%
+  mutate(GRCplatt_Param = map(GRCplatt_Model, tidy),
+         GRCplatt_Predict = map(GRCplatt_Model, possibly(augment)),
+         GRCplatt_Glance = map(GRCplatt_Model, possibly(glance)))
+
+
+# GRCplatt_PredictSolFits <- SolFitsMetaLRC %>%
+#   unnest(GRCplatt_Predict)%>%
+#   unnest(GRCplatt_Param)
+#   
+```
+
+# Create preliminary plot - Example
+
+```{r prelim plot}
+SolFitsMetaLRC |> 
+  unnest(GRCplatt_Predict) |>
+  filter(Strain == "BA48R") %>% 
+  filter(Par_ue == 90) %>% 
+  filter(Photoperiod == 16) |>
+ggplot() +
+  geom_point(aes(ActPARCorr, JVPSII_ETRqpOxbo_FoSig, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), alpha = 0.8, size = 3.5, show.legend = T) +
+  geom_line(aes(ActPARCorr, .fitted), colour = "black", linetype = "dotted") +
+  ggh4x::facet_nested(cols = vars(Ex_WL), rows = vars(Strain, Par_ue, Photoperiod, E_days), labeller = label_parsed) +
+  theme_bw()
+
+```
+
+Use Peak Par_ue and 1/2 Peak Par_ue to estimate growth JVPSII for each combination
+-use 'Pluck' to reach into GRCplatt_Predict to get a, b, Pmax; or
+-unnest, pivot wider to get a, b, Pmax
+
+```{r growth light JVPSII}
+
+SolFitsMetaLRCGrowth <- SolFitsMetaLRC |>
+  unnest(GRCplatt_Param) |>
+  select(-c(statistic, p.value, GRCplatt_Predict, GRCplatt_Glance)) |> #remove (temporarily) to make pivot_wider easier
+  pivot_wider(names_from = term, values_from = c(estimate, std.error)) |>
+  mutate(JVPSII_Par_ue = grcplatt(I = Par_ue, a = estimate_a, estimate_b, estimate_Pmax),
+         JVPSII_HalfPar_ue = grcplatt(I = (0.5*Par_ue), a = estimate_a, estimate_b, estimate_Pmax))
+
+ 
+head(SolFitsMetaLRCGrowth) 
+```
+
+# Test plots of Growth Par_ue and 1/2 Growth Par_ue estimates for JVPSII
+```{r growth JVPSII}
+SolFitsMetaLRCGrowth |>
+  ggplot() +
+  geom_point(aes(x = E_days, y = JVPSII_Par_ue, colour = Ex_WL)) +
+  facet_grid(cols = vars(Ex_WL, Photoperiod, Strain), rows = vars(Par_ue)) +
+  theme_bw()
+
+SolFitsMetaLRCGrowth |>
+  filter(Strain == "BA48R") |>
+  ggplot() +
+  geom_point(aes(x = E_days, y = JVPSII_Par_ue, colour = Ex_WL)) +
+  facet_grid(cols = vars(Ex_WL, Photoperiod, Strain), rows = vars(Par_ue)) +
+  theme_bw()
+
+SolFitsMetaLRCGrowth |>
+  filter(Strain == "BA77G") |>
+  ggplot() +
+  geom_point(aes(x = E_days, y = JVPSII_Par_ue, colour = Ex_WL)) +
+  facet_grid(cols = vars(Ex_WL, Photoperiod, Strain), rows = vars(Par_ue)) +
+  theme_bw()
+```
+# Variable names used in Data Dictionary
+
+```{r}
+colnames(SolFitsMeta)
+```
+
+
+# Save Rds for further analysis
+
+```{r save rds}
+saveRDS(SolFitsMetaLRCGrowth, file.path(DataOut, paste(Project, "Imported_Solisense_LRC.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+
+
+------------------------------------------------------# Add Turner Catalog--------------------------------------------------
+
+# Load Turner catalog
+
+```{r load turner catalog, message = FALSE, warning = FALSE, echo=FALSE}
+gs4_deauth()
+Turnercatalog<- read_sheet("https://docs.google.com/spreadsheets/d/13mQm0B3siS65UuGjNdzvpHFomfuwn6aAg7dBoq1IqrM/edit#gid=0")
+
+as.data.frame(Turnercatalog)
+ChlData <- Turnercatalog 
+
+ChlData <- ChlData %>%  
+  mutate(TurChl_ugL = as.numeric(Reading_rfu) * as.numeric(Chl_slope) + as.numeric(Chl_intercept)) %>% 
+  mutate(DATE = ymd(`DATE`)) %>% 
+  rename(SampleID=CultureID) %>% 
+  rename(ObsDate=DATE) %>% 
+  select(c(SampleID, ObsDate, TurChl_ugL)) %>% 
+  filter(TurChl_ugL<212354.754)  #outliers
+
+```
+
+# Calculate Chl mean from 3 technical replica
+
+```{r}
+ChlData <- ChlData %>%
+  group_by(SampleID, ObsDate) %>%
+  summarize(SampleID, ObsDate, TurChl_ugL,
+            meanTurChl_ugL = mean(TurChl_ugL),
+            sdTurChl_ugL = sd(TurChl_ugL)) %>%
+  ungroup()
+```
+
+
+# Merge JVPSII with chlorophyll Turner data 
+It is "bigger" df b/c I have 3 replica for Turner
+
+```{r}
+SolFitsExpStTurner <- ChlData %>%
+  full_join(., SolFitsMetaLRCGrowth, by = c("SampleID"="SampleID", "ObsDate"="ObsDate")) %>% 
+  drop_na(Strain)
+```
+```{r}
+SolFitsExpStTurner<-SolFitsExpStTurner %>%  
+  mutate(Strain=case_when(Strain=="BA127R"~"PE-rich_127",
+         Strain=="BA48R"~"PE-rich_048",
+        Strain=="BA56G"~"PC-rich_056",
+         Strain=="BA77G"~"PC-rich_077")) 
+```
+
+# Filter only revelant strains
+
+```{r}
+SolFitsExpStTurner<-SolFitsExpStTurner %>%  
+  filter(Strain=="PC-rich_056" | Strain == "PC-rich_077" | Strain == "PE-rich_048" | Strain == "PE-rich_127")
+```
+
+
+# Create preliminary JVPSII vs Chl Turner (ug/L) plot
+
+```{r preliminary plots, warning = FALSE}
+# lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
+lab1=c(expression("8 h"), expression("12 h"), expression("16 h"), expression("24 h"))
+lab2=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("600 µE"), expression("900 µE"))
+
+SolFitsExpStTurner %>% 
+  ggplot() +
+  geom_point(aes(x = E_days, y = JVPSII_Par_ue, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 3.5, show.legend = T) +
+  scale_shape_manual(values = c(15, 16, 17,18), name="", labels = lab1) +
+  scale_colour_manual(values = c("darkslategray", "lightblue4", "hotpink4", "indianred3","goldenrod2", "khaki2"), name="", labels = lab2) +
+  ggh4x::facet_nested(cols = vars(Ex_WL), rows = vars(Strain), labeller = label_parsed) +
+  theme_bw()
+
+SolFitsExpStTurner %>% 
+  ggplot() +
+  geom_point(aes(x = TurChl_ugL, y = JVPSII_Par_ue, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 3.5, show.legend = T) +
+  scale_shape_manual(values = c(15, 16, 17,18), name="", labels = lab1) +
+  scale_colour_manual(values = c("darkslategray", "lightblue4", "hotpink4", "indianred3","goldenrod2", "khaki2"), name="", labels = lab2) +
+  ggh4x::facet_nested(cols = vars(Ex_WL), rows = vars(Strain), labeller = label_parsed) +
+  theme_bw()
+
+SolFitsExpStTurner %>% 
+  ggplot() +
+  geom_point(aes(x = meanTurChl_ugL, y = JVPSII_Par_ue, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 3.5, show.legend = T) +
+  scale_shape_manual(values = c(15, 16, 17,18), name="", labels = lab1) +
+  scale_colour_manual(values = c("darkslategray", "lightblue4", "hotpink4", "indianred3","goldenrod2", "khaki2"), name="", labels = lab2) +
+  ggh4x::facet_nested(cols = vars(Ex_WL), rows = vars(Strain), labeller = label_parsed) +
+  theme_bw()
+
+SolFitsExpStTurner %>% 
+  ggplot() +
+  geom_point(aes(x = meanTurChl_ugL, y = JVPSII_HalfPar_ue, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 3.5, show.legend = T) +
+  scale_shape_manual(values = c(15, 16, 17,18), name="", labels = lab1) +
+  scale_colour_manual(values = c("darkslategray", "lightblue4", "hotpink4", "indianred3","goldenrod2", "khaki2"), name="", labels = lab2) +
+  ggh4x::facet_nested(cols = vars(Ex_WL), rows = vars(Strain), labeller = label_parsed) +
+  theme_bw()
+
+
+SolFitsExpStTurner %>% 
+  filter(Ex_WL == 445) %>% 
+  filter(Photoperiod == 24) %>% 
+  ggplot() +
+  geom_point(aes(x = meanTurChl_ugL, y = JVPSII_Par_ue, colour = as.factor(Par_ue), shape = as.factor(Photoperiod)), size = 3.5, show.legend = T) +
+  scale_shape_manual(values = c(15, 16, 17,18), name="", labels = lab1) +
+  scale_colour_manual(values = c("darkslategray", "lightblue4", "hotpink4", "indianred3","goldenrod2", "khaki2"), name="", labels = lab2) +
+  ggh4x::facet_nested(cols = vars(Photoperiod, Par_ue), rows = vars(Strain), labeller = label_parsed) +
+  theme_bw()
+```
+
+--------------------------------- Adding cell_L ------------------------------
+
+```{r set project variables}
+Project <- "BalticPhotoperiod"
+DataIn <- file.path("..", "Data", "ProcessedData", "ProcessedPigmentsData", fsep = .Platform$file.sep)
+```
+
+```{r Exported Rmd}
+list.files(path = DataIn, pattern = Project, full.names = TRUE)
+```
+
+```{r read pigments File}
+#df ontained mean OD per day from Multiculti and Abs from Olis spectra for selected nm. Based on this I calculated pigments per mL and per cell (pg/cell)
+
+MCPigmentAllFile <- "../Data/ProcessedData/ProcessedPigmentsData/BalticPhotoperiod_Processed_PigmentsAll.Rds"
+MCPigmentAllFileName <- str_split(string = MCPigmentAllFile, "/")[[1]][3] %>%
+  str_remove(pattern = ".Rds")
+MCPigmentAll <- readRDS(MCPigmentAllFile)  %>%
+  ungroup()
+```
+
+```{r}
+# colnames(MCPigmentAll)
+
+MCPigmentAll<-MCPigmentAll %>% 
+  select(-c(Phase, ChlaugmL, CarugmL, PEugmL, PCugmL, APCugmL, PhycougmL, CarChlaRatio, PhycoChlaRatio, PEPCRatio, Chlapgcell, Carpgcell, PEpgcell, PCpgcell, APCpgcell, Phycopgcell, meanOD720_h, meanDeltaOD_h, AchivePreStationary, dayRound_tmaxAG, MaxAG, MaxDG, MC))
+
+```
+
+```{r}
+# MCPigmentAll <- MCPigmentAll %>%
+#   filter(ToD==12) # When I choose 12 (peak) then I loose a few data point from 12h and 900UE
+```
+
+```{r}
+SolFitsAll <- MCPigmentAll %>%
+  full_join(., SolFitsExpStTurner, by = c("SampleID"="SampleID", "Strain"="Strain", "Run"="Run", "Tube"="Tube", "Par_ue" = "Par_ue", "Photoperiod"="Photoperiod", "O2"="O2", "WL"="WL", "LightShape"="LightShape", "ExpDate"="ExpDate", "ExpEndDate"="ExpEndDate", "PARPhotonDose_day"="PARPhotonDose_day","E_days"="E_days"))
+```
+
+```{r}
+SolFitsAll<-SolFitsAll %>% 
+  drop_na(JVPSII_Par_ue)
+```
+
+# Create preliminary plot
+
+```{r preliminary plot}
+lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
+lab2=c(expression("8 h"), expression("12 h"), expression("16 h"), expression("24 h"))
+lab3=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("900 µE"))
+
+SolFitsAll %>%
+  filter(Ex_WL == 445) %>% 
+  ggplot() +
+  geom_point(aes(x = E_days, y = JVPSII_Par_ue, colour = as.factor(Strain)),  alpha = 0.8, size = 3, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="", labels = lab1) +
+  ggh4x::facet_nested(cols = vars(Photoperiod), rows = vars(Par_ue), labeller = label_parsed) +
+  theme_bw() 
+
+SolFitsAll %>%
+  filter(Ex_WL == 445) %>% 
+  ggplot() +
+  geom_point(aes(x = TurChl_ugL, y = JVPSII_Par_ue, colour = as.factor(Strain)),  alpha = 0.8, size = 3, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="", labels = lab1) +
+  ggh4x::facet_nested(cols = vars(Photoperiod), rows = vars(Par_ue), labeller = label_parsed) +
+  theme_bw() 
+
+SolFitsAll %>%
+  filter(Ex_WL == 445) %>% 
+  ggplot() +
+  geom_point(aes(x = cellL_OD680, y = JVPSII_Par_ue, colour = as.factor(Strain)),  alpha = 0.8, size = 3, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="", labels = lab1) +
+  ggh4x::facet_nested(cols = vars(Photoperiod), rows = vars(Par_ue), labeller = label_parsed) +
+  theme_bw() 
+```
+
+
+# Choose only exp data
+
+```{r choose only exp data}
+O1 <- SolFitsAll %>%
+  filter(Par_ue == 300 | Par_ue == 90 | Par_ue == 180 | Par_ue == 600 | Par_ue == 900) %>%
+  filter(Photoperiod == 24) %>%
+  filter(E_days <= 4)
+
+O2 <- SolFitsAll %>%
+  filter(Par_ue == 90 | Par_ue == 180 | Par_ue == 300) %>%
+  filter(Photoperiod == 16) 
+  #filter(E_days < 9)
+
+O3 <- SolFitsAll %>%
+  filter(Par_ue == 900 | Par_ue == 600) %>%
+  filter(Photoperiod == 16) %>%
+  filter(E_days <= 4)
+
+O4 <- SolFitsAll %>%
+  filter(Par_ue == 30) %>%
+  filter(Photoperiod == 16) 
+  #filter(E_days <= 14)
+
+O5 <- SolFitsAll %>%
+  filter(Par_ue == 30) %>%
+  filter(Photoperiod == 8 | Photoperiod == 12) 
+  #filter(E_days <=14)
+
+O6 <- SolFitsAll %>%
+  filter(Par_ue == 90) %>%
+  filter(Photoperiod == 8) 
+  #filter(E_days <=14)
+
+O7 <- SolFitsAll %>%
+  filter(Par_ue == 90) %>%
+  filter(Photoperiod == 12) %>%
+  filter(E_days <=10)
+
+O8 <- SolFitsAll %>%
+  filter(Par_ue == 180 | Par_ue == 300) %>%
+  filter(Photoperiod == 8 | Photoperiod == 12) 
+  #filter(E_days <=10)
+
+O9 <- SolFitsAll %>%
+  filter(Par_ue == 900 | Par_ue == 600) %>%
+  filter(Photoperiod == 8 | Photoperiod == 12) %>%
+  filter(E_days <=7)
+
+O10 <- SolFitsAll %>%
+  filter(Par_ue == 30) %>%
+  filter(Photoperiod == 24) %>%
+  filter(E_days <= 8)
+
+SolFitsAllExp <-rbind(O1, O2, O3, O4, O5, O6, O7, O8, O9, O10)
+
+rm(O1, O2, O3, O4, O5, O6, O7, O8, O9, O10)
+```
+
+# Choose only Stationary data 
+
+```{r choose only St data}
+O1 <- SolFitsAll %>%
+  filter(Par_ue == 300 | Par_ue == 90 | Par_ue == 180 | Par_ue == 600 | Par_ue == 900) %>%
+  filter(Photoperiod == 24) %>%
+  filter(E_days > 4)
+
+O2 <- SolFitsAll %>%
+  filter(Par_ue == 30) %>%
+  filter(Photoperiod == 12 | Photoperiod == 16) %>%
+  filter(E_days >14)
+
+O3 <- SolFitsAll %>%
+  filter(Par_ue == 90) %>%
+  filter(Photoperiod == 12 | Photoperiod == 16) %>%
+  filter(E_days >10)
+
+O4 <- SolFitsAll %>%
+  filter(Par_ue == 180 | Par_ue == 300) %>%
+  filter(Photoperiod == 8 | Photoperiod == 12 | Photoperiod == 16) %>%
+  filter(E_days >10)
+
+O5 <- SolFitsAll %>%
+  filter(Par_ue == 900 | Par_ue == 600) %>%
+  filter(Photoperiod == 16) %>%
+  filter(E_days >=6)
+
+O6 <- SolFitsAll %>%
+  filter(Par_ue == 900 | Par_ue == 600) %>%
+  filter(Photoperiod == 12) %>%
+  filter(E_days >=4)
+
+O6 <- SolFitsAll %>%
+  filter(Par_ue == 900 | Par_ue == 600) %>%
+  filter(Photoperiod == 8) %>%
+  filter(E_days >7)
+
+SolFitsAllSt <-rbind(O1, O2, O3, O4, O5, O6)
+
+rm(O1, O2, O3, O4, O5, O6)
+```
+
+# Combine Exp and St data
+
+```{r}
+  SolFitsAllExp$Phase <- 'Exponential'
+  SolFitsAllSt$Phase <- 'Pre-stationary'
+
+  SolFitsAllExpSt <-rbind(SolFitsAllExp, SolFitsAllSt)
+```
+
+
+# Create preliminary plot
+
+```{r preliminary plot}
+lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
+lab2=c(expression("8 h"), expression("12 h"), expression("16 h"), expression("24 h"))
+lab3=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("900 µE"))
+
+SolFitsAllExpSt %>%
+  filter(Ex_WL == 445) %>% 
+  filter(Phase == "Exponential") %>% 
+  ggplot() +
+  geom_point(aes(x = E_days, y = JVPSII_Par_ue, colour = as.factor(Strain)),  alpha = 0.8, size = 3, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="", labels = lab1) +
+  ggh4x::facet_nested(cols = vars(Phase, Photoperiod), rows = vars(Par_ue), labeller = label_parsed) +
+  theme_bw() 
+
+SolFitsAllExpSt %>%
+  filter(Ex_WL == 445) %>% 
+  filter(Phase == "Exponential") %>% 
+  #filter(Photoperiod == 8) %>% 
+  ggplot() +
+  geom_point(aes(x = TurChl_ugL, y = JVPSII_Par_ue, colour = as.factor(Strain)),  alpha = 0.8, size = 3, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="", labels = lab1) +
+  ggh4x::facet_nested(cols = vars(Phase, Photoperiod), rows = vars(Par_ue), labeller = label_parsed) +
+  theme_bw() 
+
+SolFitsAllExpSt %>%
+  filter(Ex_WL == 445) %>% 
+  filter(Phase == "Exponential") %>% 
+  ggplot() +
+  geom_point(aes(x = cellL_OD680, y = JVPSII_Par_ue, colour = as.factor(Strain)),  alpha = 0.8, size = 3, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="", labels = lab1) +
+  ggh4x::facet_nested(cols = vars(Phase, Photoperiod), rows = vars(Par_ue), labeller = label_parsed) +
+  theme_bw() 
+```
+# Save rds for further analysis
+
+```{r save rds}
+saveRDS(SolFitsAllExpSt, file.path(DataOut, paste(Project, "Processed_SolisenseJVPSII.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+--------------------------------------# Choose cooresponding PAR for Sig  ----------------------------------------------------
+
+# Choosen Sigma from corresponding light
+
+```{r data taken from corresponding light calibration}
+SolFitsTrimMetaClean30 <- SolFitsMetaRaw %>%
+  filter(Dark1s == 0) %>%
+  filter(Par_ue == 30) %>%
+  filter(ActPAR == 20) # 39.5 for 445 and 48.7 for 590
+
+SolFitsTrimMetaClean90 <- SolFitsMetaRaw %>%
+  filter(Dark1s == 0) %>%
+  filter(Par_ue == 90) %>%
+  filter(ActPAR == 40) # 79.0 for 445 and 97.5 for 590
+
+SolFitsTrimMetaClean180 <- SolFitsMetaRaw %>%
+  filter(Dark1s == 0) %>%
+  filter(Par_ue == 180) %>%
+  filter(ActPAR == 80) # 158.1 for 445 and 195.0 for 590
+
+SolFitsTrimMetaClean300 <- SolFitsMetaRaw %>%
+  filter(Dark1s == 0) %>%
+  filter(Par_ue == 300) %>%
+  filter(ActPAR == 160) # 316.2 for 445 and 390.0 for 590
+
+SolFitsTrimMetaClean600 <- SolFitsMetaRaw %>%
+  filter(Dark1s == 0) %>%
+  filter(Par_ue == 600) %>%
+  filter(ActPAR == 320) # 632.5 for 445 and 780.1 for 590
+
+SolFitsTrimMetaClean900 <- SolFitsMetaRaw %>%
+  filter(Dark1s == 0) %>%
+  filter(Par_ue == 900) %>%
+  filter(ActPAR == 320) # 632.5 for 445 and 780.1 for 590
+
+SolFitsTrimMetaClean<-rbind(SolFitsTrimMetaClean30, SolFitsTrimMetaClean90, SolFitsTrimMetaClean180, SolFitsTrimMetaClean300, SolFitsTrimMetaClean600, SolFitsTrimMetaClean900)
+
+rm(SolFitsTrimMetaClean30, SolFitsTrimMetaClean90, SolFitsTrimMetaClean180, SolFitsTrimMetaClean300,  SolFitsTrimMetaClean600, SolFitsTrimMetaClean900)
+```
+
+# Choosen Sigma measured from 1s in dark after corresponding light
+
+```{r data taken from 1s of dark after corresponding light calibration}
+SolFitsTrimMetaDarkafterLight30 <- SolFitsMetaRaw %>%
+  filter(Dark1s == 1) %>%
+  filter(ActPAR == 0) %>%
+  filter(Par_ue == 30) %>%
+  filter(LR_s==13|LR_s==14|LR_s==15|LR_s==16|
+         LR_s==118|LR_s==119|LR_s==120|LR_s==112|LR_s==122)
+
+SolFitsTrimMetaDarkafterLight90 <- SolFitsMetaRaw %>%
+  filter(Dark1s == 1) %>%
+  filter(ActPAR == 0) %>%
+  filter(Par_ue == 90) %>%
+  filter(LR_s==26|LR_s==27|LR_s==28|LR_s==29|
+         LR_s==105|LR_s==106|LR_s==107|LR_s==108)
+
+SolFitsTrimMetaDarkafterLight180 <- SolFitsMetaRaw %>%
+  filter(Dark1s == 1) %>%
+  filter(ActPAR == 0) %>%
+  filter(Par_ue == 180) %>%
+  filter(LR_s==40|LR_s==41|LR_s==42|LR_s==43|
+         LR_s==92|LR_s==93|LR_s==94|LR_s==95)
+
+SolFitsTrimMetaDarkafterLight300 <- SolFitsMetaRaw %>%
+  filter(Dark1s == 1) %>%
+  filter(ActPAR == 0) %>%
+  filter(Par_ue == 300) %>%
+  filter(LR_s==53|LR_s==54|LR_s==55|LR_s==56|
+         LR_s==79|LR_s==80|LR_s==81|LR_s==82)
+
+SolFitsTrimMetaDarkafterLight900 <- SolFitsMetaRaw %>%
+  filter(Dark1s == 1) %>%
+  filter(ActPAR == 0) %>%
+  filter(Par_ue == 900 | Par_ue == 600) %>%
+  filter(LR_s==66|LR_s==67|LR_s==68|LR_s==69)
+
+SolFitsTrimMetaDarkafterLight <- rbind(SolFitsTrimMetaDarkafterLight30, SolFitsTrimMetaDarkafterLight90, SolFitsTrimMetaDarkafterLight180, SolFitsTrimMetaDarkafterLight300, SolFitsTrimMetaDarkafterLight900)
+
+rm(SolFitsTrimMetaDarkafterLight30, SolFitsTrimMetaDarkafterLight90, SolFitsTrimMetaDarkafterLight180, SolFitsTrimMetaDarkafterLight300, SolFitsTrimMetaDarkafterLight900)
+
+SolFitsTrimMetaDarkafterLight <- SolFitsTrimMetaDarkafterLight %>%
+  mutate(Sig1s=Sig*1) %>%
+  mutate(Sig1s_m2psii=Sig_m2psii*1) %>%
+  select(-c(Sig, Sig_m2psii))
+```
+
+```{r convert Sigma}
+SolFitsTrimMetaDarkafterLight <- SolFitsTrimMetaDarkafterLight %>%
+mutate(Sig1s_nm2psii=Sig1s_m2psii*1000000000000000000) 
+```
+
+# Cleaning df before saving as Rds and removed unnecessary files from the environment
+
+```{r Cleaning the environment}
+rm(CultureCatalog, ActPARCrossCal)
+```
+
+
+# Create preliminary plots 
+
+```{r preliminary plot}
+lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
+lab2=c(expression("8 h"), expression("12 h"), expression("16 h"), expression("24 h"))
+lab3=c(expression("30 µE"), expression("90 µE"), expression("180 µE"), expression("300 µE"), expression("900 µE"))
+
+SolFitsTrimMetaClean %>%
+  ggplot() +
+  geom_point(aes(x = Par_ue, y = Sig, colour = as.factor(Strain)), size = 3.5, show.legend = T) +
+  scale_colour_discrete(type=c("seagreen4", "palegreen3", "brown1", "brown4"), name="", labels = lab1) +
+  facet_grid(rows = vars(Ex_WL), cols = vars(Photoperiod)) +
+  theme_bw()
+
+```
+
+# Save rds for further analysis
+
+```{r save rds}
+# saveRDS(SolFitsTrimMetaClean, file.path(DataOut, paste(Project, "Imported_SolisenseLight1.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+# 
+# saveRDS(SolFitsTrimMetaDarkafterLight, file.path(DataOut, paste(Project, "Imported_SolisenseDarkafterLight1.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+# Variable names used in Data Dictionary
+
+```{r}
+colnames(SolFitsTrimMetaClean)
+```
+
+# Variable names used in Data Dictionary
+
+```{r}
+colnames(SolFitsTrimMetaDarkafterLight)
+```
+
+
+
+Oxborough & Baker 1997 for Fo'
+
+Oxborough, K., & Baker, N. R. (1997). Resolving chlorophyll a fluorescence images of photosynthetic efficiency into photochemical and non-photochemical components–calculation of qP and Fv-/Fm-; without measuring Fo. Photosynthesis research, 54, 135-142.
+
+Oxborough, K., & Baker, N. R. (1997). An instrument capable of imaging chlorophyll a fluorescence from intact leaves at very low irradiance and at cellular and subcellular levels of organization. Plant, Cell & Environment, 20(12), 1473-1483.
+
+Oxborough, K., Moore, C. M., Suggett, D. J., Lawson, T., Chan, H. G., & Geider, R. J. (2012). Direct estimation of functional PSII reaction center concentration and PSII electron flux on a volume basis: a new approach to the analysis of Fast Repetition Rate fluorometry (FRRf) data. Limnology and Oceanography: Methods, 10(3), 142-154.
+
+Suggett, D. J., Moore, C. M., Oxborough, K., & Geider, R. J. (2006). Fast repetition rate (FRR) chlorophyll a fluorescence induction measurements. West Molesey: Chelsea Technologies Group, 1-53.
+
+
+
+
+Berge, J., Grant, S., Bjørgum, R., Cohen, J. H., McKee, D., Johnsen, G., Zolich, A., Kopec, T. P., Vogedes, D. L., UiT The Arctic University of Norway (2021).Time series (2017) of irradiance in the PAR (photosynthetically active radiation) region measured under the dome of a light observatory in the Arctic  (Ny-Ålesund, Svalbard, Norway) derived from an USSIMO spectroradiometer [Data set]. Norstore. https://doi.org/10.11582/2021.00040
+
+https://archive.norstore.no/pages/public/datasetDetail.jsf?id=10.11582/2021.00040
+
+PAR is approximated as an integral of micromolespersec=(uirr/(h*c/(lambda*1e-9)))/microavo for wavelengths(lambda) in range from 400 to 700nm, where: uirr = USSIMO irradiance for wavelength equal to lambda, h=6.63e-34 [Js], c=3.00e+08 [m/s], microavo=6.022e17.
+
+
+
+
+
+Fast Repetition Rate fluorometry (FRRf, Kolber et al. 1998) 
+
+σPSII - Effective absorption cross section of PSII photochemistry in darkness -> A2 (quanta)-1 or m2
+ρ - Connectivity between PSII reaction centres in darkness
+
+σPSII′ - Effective absorption cross section of PSII photochemistry under actinic light -> A2 (quanta)-1 or m2
+ρ′ - Connectivity between PSII reaction centres under actinic light
+
+TauPSII - Minimum turnover time of PSII photochemistry -> s-1
+
+F0 or F0’ (Minimum fluorescence in darkness or Minimum fluorescence under actinic light)
+Fm or Fm’ (Maximum fluorescence in darkness or Maximum fluorescence under actinic light)
+F’ (or Fs; Steady state fluorescence at any point)
+Fv = Fm-F0 (Variable fluorescence in darkness)
+Fv’ = Fm’-F0’ (Variable fluorescence under actinic light)
+Fq′ = (Fm′ - F′) (Difference between Fm′ and F′)
+
+Fv/Fm = (Fm-F0)/Fm (The maximum PSII quantum yield/Maximum photochemical efficiency)
+Fv’/Fm’ = (Fm’- F0’)/Fm’ (Maximum PSII efficiency under actinic light)
+
+ΦPSII = (Fm’- F’)/Fm’ = Fq′/Fm′ (Photochemical efficiency under actinic light)
+
+qP = (Fm’- F’)/(Fm’-F0’) = (Fm′ - F′)/Fv′ = Fq′/Fv′ (PSII efficiency factor under actinic light; photochemical quenching coefficient) 
+
+NPQ =(Fm-Fm’)/Fm’ (Non-photochemical quenching coefficien)
+
+
+ETR = PPFD * aPSII * PSII photochemical efficiency (ΦPSII)
+
+ETR^RCII = PPFD * σPSII * Fq′/Fm′ (or ΦPSII) * 21.683
+
+ETR^chl = PPFD * σPSII * n PSII * Fq′/Fm′ (or ΦPSII) * 21.683
+
+
+FRR fluorescence provides a direct measure of light absorption per unit PSII reaction centres (σPSII).
+
+ETR, called the relative electron transport rate, is the product of the effective photochemical yield of
+PSII (ΦPSII) and photosynthetic photon flux density
+
+ETR^RCII(chl) - RCII (Chlorophyll a)-normalised rate of electron transfer by PSII -> mol e- g chla-1 h-1
+
+ETR^chl is the chlorophylla-specific rate of electron transfer (mol e- mol chla-1 h-1 ).
+
+PPFD (=E) - Photosynthetically active photon flux density -> μmol m-2 s-1
+
+a^chlPSII - a^chl only used for PSII photochemistry -> m2 mg chla-1
+
+(factor 21.683 converts seconds to hours, μmol e- to mol e- and A2 quanta-1 to m2 mol RCII-1)
+
+nPSII - photosynthetic unit size of PSII
+
+JVPSII - PSII flux per unit volume -> electrons m–3 s–1
+
+[RCII] - concentration of functional PS II reaction centers -> m-3
+
+aLHII - LHII (light harvesting complex II) absorption coefficient -> m-1
+
+
