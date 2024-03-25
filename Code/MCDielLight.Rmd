@@ -145,7 +145,7 @@ filter(time - round(time) == 0)
 ```{r preliminary plot}
 MCDataHour |>
   filter(Run == 39) %>% 
-  # filter(time >= 48,
+  filter(time >= 24) |>
   #        time <= 72) |>
   #filter(time < 100) |>
   ggplot() +
