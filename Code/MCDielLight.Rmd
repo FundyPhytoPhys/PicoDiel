@@ -57,6 +57,7 @@ TableRdsPath <- file.path("..", "Output", "TablesRDS")
 
 
 ## Read Data
+Check with Sylwia & Mireille about what filter(s) have been applied in 'Process' Consider using 'Process' before this step
 ```{r data files}
 MCFiles <- list.files(path = file.path("..", "Data", "ImportedData", "ImportedMCData"), full.names = TRUE)
 MCFiles
@@ -66,13 +67,15 @@ MCFiles
 
 MCData <- readRDS(file = MCFiles[1]) |>
   ungroup() |>
-  mutate(deltaOD = OD680 - OD720)
+  mutate(deltaOD = OD680 - OD720) |>
+  filter(OD720 >= 0)
 
   colnames(MCData)
   
 MCDataAll <- map_df(MCFiles, readRDS) |>
   ungroup() |>
-  mutate(deltaOD = OD680 - OD720)
+  mutate(deltaOD = OD680 - OD720) |>
+  filter(OD720 >= 0)
 ```
 
 ```{r par_time_plot}
@@ -145,7 +148,7 @@ MCDataHour <- MCDataAll |>
    mutate(Actinic_umolphotonsm2h = zoo::rollsum(Actinic_par * 60 * ODinterval , k = 60/ODinterval, fill = NA, align = "right")) |> #PAR per h
   mutate(mu_OD720window = zoo::rollapply(cbind(time, log(OD720)), width = 60/ODinterval, FUN = slope, by.column=FALSE, fill=NA, align = "right")) |> #slope
   mutate(mu_Averh = zoo::rollmean(mu_OD720window, k = 60/ODinterval, fill = NA, align = "left")) |> #average of first 12 row  ungroup() 
-filter(time - round(time) == 0)
+filter(time - round(time) == 0) #crude collapse to 1 measurement per hour
 
 ```
 
@@ -172,6 +175,7 @@ MCDataHour |>
 
 MCDataHour |>
     filter(Run == 39) %>% 
+    filter(time >= 24) |>
    filter(time <= 96) |>
   ggplot() +
   geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
@@ -181,6 +185,7 @@ MCDataHour |>
 
 MCDataHour |>
     filter(Run == 39) %>% 
+    filter(time >= 24) |>
    filter(time <= 96) |>
   ggplot() +
   geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
@@ -192,6 +197,7 @@ MCDataHour |>
 MCDataHour |>
     filter(Run == 39) %>% 
   filter(Tube == 4) |>
+  filter(time >= 24) |>
   filter(time <= 96) |>
   ggplot() +
   geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
@@ -201,8 +207,9 @@ MCDataHour |>
 
 
 MCDataHour |>
-    filter(Run == 39) %>% 
-   filter(time <= 96) |>
+  filter(Run == 39) %>% 
+  filter(time >= 24) |>
+  filter(time <= 96) |>
   #filter(Actinic_par > 1) |>
   ggplot() +
   geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
