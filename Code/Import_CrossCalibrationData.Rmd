@@ -65,7 +65,7 @@ library(scales)
 # Set Project Variables
 
 ```{r set project variables}
-Project <- "BalticPhotoperiod"
+Project <- "PicoDiel"
 DataOut <- file.path("..", "Data", "ImportedData", "ImportedPigmentsData")
 
 PlotsPath <- file.path("..", "Output", "Plots")
@@ -93,7 +93,7 @@ CultureCatalog<-CultureCatalog %>%
 # Set project variables
 
 ```{r set project variables}
-Project <- "BalticPhotoperiod"
+Project <- "PicoDiel"
 DataIn <- file.path("..", "Data", "ProcessedData", "ProcessedGrowthCurveData")
 ```
 
@@ -105,7 +105,7 @@ list.files(path = DataIn, pattern = Project, full.names = TRUE)
 # Read Growth curve Rds
 
 ```{r read ProcessFile Sol}
-GrowthCurveFile <- "../Data/ProcessedData/ProcessedGrowthCurveData/BalticPhotoperiod_Processed_GrowthCurve.Rds"  
+GrowthCurveFile <- "../Data/ProcessedData/ProcessedGrowthCurveData/PicoDiel_Processed_GrowthCurve.Rds"  
 GrowthCurveFileName <- str_split(string = GrowthCurveFile, "/")[[1]][3] %>%
   str_remove(pattern = ".Rds")
 
@@ -354,7 +354,7 @@ rm(lmDeltaOD, my_dataDeltaOD, ChlDataMeta, CorrDeltaTur)
 # IMPORT MD PICO CORRELATION DATA
 
 ```{r set project variables, warning = FALSE, echo = FALSE}
-Project <- "BalticPhotoperiod"
+Project <- "PicoDiel"
 zip_file <- file.path("..", "Data", "RawData", "MDPico.zip")
 
 # List files in the extracted folder with a ".txt" extension
