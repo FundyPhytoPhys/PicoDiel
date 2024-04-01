@@ -1,0 +1,869 @@
+---
+title: "Import_CrossCalibrationData"
+author:
+- Sylwia Sliwinska-Wilczewska
+- Mireille Savoie
+- Naaman M. Omar 
+- Douglas A. Campbell
+date: "`r format(Sys.Date())`"
+output:
+bookdown::html_document2:
+    code_folding: show
+    keep_md: yes
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 6
+    fig_caption: yes
+bibliography: BalticPhotoperiod.bib
+csl: plos-one.csl
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Set Chunk Options
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+knitr::opts_chunk$set(fig.path='Figs/')
+```
+
+# Introduction
+
+Import_CrossCalibrationData.Rmd imports: 
+Chl Turner data from google sheet catalog (include: SySl, MiSa, JuNa), 
+MDPico data from MDPico.zip folder (GitHub\BalticPhotoperiod\Data\RawData), and 
+GrowthCurveData from BalticPhotoperiod_Processed_GrowthCurve.Rds (from BalticPhotoperiod)
+and stored in XXX folder as: XXX.Rds
+
+The tables with the compiled calibrations could be saved if needed (MDPicoGrowthCorrelation and TurnerGrowthCorrelation_Delta)
+
+# Load libraries
+
+```{r load libraries}
+library(kableExtra)
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(broom)
+library(knitr)
+library(OneR)
+library(zoo)
+library(strucchange)
+library(dplyr)
+library(magrittr)
+library(googledrive)
+library(googlesheets4)
+library(readxl)
+library(ggspectra)
+library(ggpubr)
+library(caret)
+library(gcookbook)
+library(scales)
+```
+
+# Set Project Variables
+
+```{r set project variables}
+Project <- "BalticPhotoperiod"
+DataOut <- file.path("..", "Data", "ImportedData", "ImportedPigmentsData")
+
+PlotsPath <- file.path("..", "Output", "Plots")
+RDSPlotPath <- file.path("..", "Output", "PlotsRDS")
+RDSTablePath <- file.path("..", "Output", "TablesRDS")
+```
+
+
+------------------------------------------------ MetaData Catalog ------------------------------------------------------
+
+# Read MetaData Catalog
+
+```{r read locally stored metadata from rds}
+CultureCatalog <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedMetaData", "CultureCatalog.Rds"))
+
+CultureCatalog<-CultureCatalog %>% 
+  select(-c(PrimaryOperator, Temp_c, ExpCul, ExpStartTime, O2_Category, Optode, OptodeCh, OptodeMeasure))
+```
+
+-------------------------------------- OD from MC (from growth curve) -----------------------------------------
+
+# IMPORT GROWTH CURVE DATA FOR CORRELATION
+(GrowthCurve already contain mean OD per h)
+
+# Set project variables
+
+```{r set project variables}
+Project <- "BalticPhotoperiod"
+DataIn <- file.path("..", "Data", "ProcessedData", "ProcessedGrowthCurveData")
+```
+
+# List Growth curve Rds
+
+```{r Exported Rmd}
+list.files(path = DataIn, pattern = Project, full.names = TRUE)
+```
+# Read Growth curve Rds
+
+```{r read ProcessFile Sol}
+GrowthCurveFile <- "../Data/ProcessedData/ProcessedGrowthCurveData/BalticPhotoperiod_Processed_GrowthCurve.Rds"  
+GrowthCurveFileName <- str_split(string = GrowthCurveFile, "/")[[1]][3] %>%
+  str_remove(pattern = ".Rds")
+
+GrowthCurve <- readRDS(GrowthCurveFile)  %>%
+  ungroup()
+```
+
+
+------------------------------------------------ Chla Turner ------------------------------------------------------
+# Load Turner catalog
+
+```{r load turner catalog, message = FALSE, warning = FALSE, echo=FALSE}
+gs4_deauth()
+ChlData<- read_sheet("https://docs.google.com/spreadsheets/d/13mQm0B3siS65UuGjNdzvpHFomfuwn6aAg7dBoq1IqrM/edit#gid=0")
+
+as.data.frame(ChlData)
+ChlData <- ChlData 
+
+ChlData <- ChlData %>%  
+  mutate(TurChl_ugL = as.numeric(Reading_rfu) * as.numeric(Chl_slope) + as.numeric(Chl_intercept)) %>% 
+  mutate(DATE = ymd(`DATE`)) %>% 
+  rename(SampleID=CultureID) %>% 
+  rename(ObsDate=DATE) %>% 
+  select(c(SampleID, ObsDate, TurChl_ugL, TIME)) %>% 
+  filter(TurChl_ugL<2500)  #outliers
+
+```
+
+# Prepare ObsTime_count to match with MC ToD data
+
+```{r}
+ChlData<-ChlData %>% 
+    filter(str_detect(SampleID, "SySl")) %>% 
+  mutate(TIME2 = as.POSIXct(strptime(TIME, format = "%H%M%S")),
+         ToD = format(TIME2, "%H")) %>% 
+  select(-c(TIME2)) %>% 
+  mutate(ToD=as.double(ToD))
+```
+
+# Calculate Chl mean from 3 technical replica
+
+```{r, warning = FALSE}
+ChlData <- ChlData %>%
+  group_by(SampleID, ObsDate) %>%
+  summarize(SampleID, ObsDate, TurChl_ugL, TIME, ToD,
+            meanTurChl_ugL = mean(TurChl_ugL),
+            sdTurChl_ugL = sd(TurChl_ugL)) %>%
+  ungroup()
+```
+
+# Merge ChlData with CultureCatalog
+
+```{r, warning = FALSE, echo=FALSE}
+ChlDataMeta <- CultureCatalog %>%
+  full_join(., ChlData, by = c("SampleID" = "SampleID")) 
+
+ChlDataMeta <- ChlDataMeta %>%
+group_by(SampleID) %>%
+  arrange(ObsDate) %>%
+  mutate(E_days = as.numeric((ObsDate - ExpDate[1]))) %>%
+ungroup() %>% 
+  mutate(Strain=case_when(Strain=="BA127R"~"PE-rich_127",
+         Strain=="BA48R"~"PE-rich_048",
+        Strain=="BA56G"~"PC-rich_056",
+         Strain=="BA77G"~"PC-rich_077")) %>% 
+  drop_na(E_days)  
+
+```
+
+
+# Merge Turner and MC OD (Growth Curve) data
+
+```{r, warning = FALSE, echo=FALSE}
+
+GrowthCurveTurner <- GrowthCurve %>%
+  full_join(., ChlDataMeta, by = c("ToD" = "ToD", "SampleID" = "SampleID", "E_days"="E_days", "Strain"="Strain","Par_ue" = "Par_ue", "Photoperiod" = "Photoperiod", "Run" = "Run", "Tube" = "Tube", "O2" = "O2", "WL" = "WL", "LightShape" = "LightShape", "ExpDate" = "ExpDate", "ExpEndDate" = "ExpEndDate")) %>% 
+  drop_na(TurChl_ugL) %>% 
+  filter(meanDeltaOD_h>0.02) # filter negative values and few outliers
+```
+
+# I filtered 600 and 900 uE, b/c correlation look much better without them
+
+```{r}
+GrowthCurveTurner<-GrowthCurveTurner %>% 
+  filter(Par_ue != 600 & Par_ue != 900)
+```
+
+
+# Create preliminary plots
+
+```{r preliminary plots}
+
+GrowthCurveTurner %>%
+  ggplot() +
+  geom_point(aes(x = meanDeltaOD_h, y = TurChl_ugL)) +
+  ggh4x::facet_nested(rows = vars(Strain), labeller = labeller(Ex_WL = label_both, strain = label_value, Par_ue = label_both, WL = label_both, Photoperiod = label_value)) +
+  theme_bw()
+```
+
+Pearson Correlation Coefficient and Linear Regression and coefficient of determination or R²
+https://www.datacamp.com/tutorial/linear-regression-R
+
+# Calculate Pearson correlation for cell count (MD Pico) vs OD720 (MC)
+
+```{r}
+CorrDeltaTur <- GrowthCurveTurner %>% 
+  filter(TurChl_ugL<1000) %>% 
+  filter(meanDeltaOD_h>0.04) %>% 
+  filter(Strain == "PC-rich_056")
+my_dataDeltaOD<- CorrDeltaTur
+ggscatter(my_dataDeltaOD, x = "meanDeltaOD_h", y = "TurChl_ugL", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataDeltaOD
+lmDeltaOD = lm(TurChl_ugL~meanDeltaOD_h, data = my_dataDeltaOD)
+summary(lmDeltaOD)
+# NmL = (DeltaOD*3822.21)-48.71
+# Adjusted R-squared: 0.8527
+# R=0.92; p=21.1e-15
+
+CorrDeltaTur <- GrowthCurveTurner %>% 
+  filter(TurChl_ugL<1500) %>% 
+  filter(meanDeltaOD_h>0.03) %>% 
+  filter(Strain == "PC-rich_077")
+my_dataDeltaOD<- CorrDeltaTur
+ggscatter(my_dataDeltaOD, x = "meanDeltaOD_h", y = "TurChl_ugL", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataDeltaOD
+lmDeltaOD = lm(TurChl_ugL~meanDeltaOD_h, data = my_dataDeltaOD)
+summary(lmDeltaOD)
+# NmL = (DeltaOD*16779.68)+3.837
+# Adjusted R-squared: 0.5892
+# R=0.77; p=2e-10
+
+
+CorrDeltaTur <- GrowthCurveTurner %>% 
+  filter(TurChl_ugL<1000) %>% 
+  filter(meanDeltaOD_h>0.03) %>% 
+  filter(Strain == "PE-rich_048")
+my_dataDeltaOD<- CorrDeltaTur
+ggscatter(my_dataDeltaOD, x = "meanDeltaOD_h", y = "TurChl_ugL", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataDeltaOD
+lmDeltaOD = lm(TurChl_ugL~meanDeltaOD_h, data = my_dataDeltaOD)
+summary(lmDeltaOD)
+# NmL = (DeltaOD*4328.492)+144.24
+# Adjusted R-squared: 0.5508
+# R=0.74; p=3.9e-11
+
+
+CorrDeltaTur <- GrowthCurveTurner %>% 
+  filter(TurChl_ugL<1200) %>% 
+  filter(meanDeltaOD_h>0.05) %>% 
+  filter(Strain == "PE-rich_127") 
+my_dataDeltaOD<- CorrDeltaTur
+ggscatter(my_dataDeltaOD, x = "meanDeltaOD_h", y = "TurChl_ugL", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataDeltaOD
+lmDeltaOD = lm(TurChl_ugL~meanDeltaOD_h, data = my_dataDeltaOD)
+summary(lmDeltaOD)
+# NmL = (DeltaOD*2805.1)+183.9
+# Adjusted R-squared: 0.4941
+# R=0.7; p = 2.1e-07
+
+```
+
+# Create table with Pearson correlation and preliminary plot (Turner vs MC DeltaOD)
+
+```{r}
+data_textPaersonBA56G_720 <- data.frame(Linear_regression = c('µg Chl a/L) = (DeltaOD*3822.21)-48.71'), Strain = c("PC-rich_056"), OD = c("720"), R_square = c(0.8527), R = c(0.92), p_value = c(0))
+data_textPaersonBA77G_720 <- data.frame(Linear_regression = c('µg Chl a/L = (DeltaOD*16779.68)+3.837'), Strain = c("PC-rich_077"), OD = c("720"), R_square = c(0.5892), R = c(0.77), p_value = c(0))
+data_textPaersonBA48R_720 <- data.frame(Linear_regression = c('µg Chl a/L = (DeltaOD*4328.492)+144.24'), Strain = c("PE-rich_048"), OD = c("720"), R_square = c(0.5508), R = c(0.74), p_value = c(0))
+data_textPaersonBA127R_720 <- data.frame(Linear_regression = c('µg Chl a/L = (DeltaOD*2805.1)+183.9'), Strain = c("PE-rich_127"), OD = c("720"), R_square = c(0.4941), R = c(0.70), p_value = c(0))
+
+TurnerGrowthCorrelation_Delta<-rbind(data_textPaersonBA56G_720, data_textPaersonBA77G_720, data_textPaersonBA48R_720, data_textPaersonBA127R_720)
+
+GrowthCurveTurner %>% 
+  filter(TurChl_ugL<1000) %>% 
+  filter(meanDeltaOD_h>0.04) %>% 
+  filter(Strain == "PC-rich_056") %>% 
+  ggplot(aes(x = meanDeltaOD_h, y = TurChl_ugL)) +
+  geom_point(aes(x = meanDeltaOD_h, y = TurChl_ugL), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA56G_720, aes(x=0.06, y=10000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  #labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (720 nm)") +
+  theme_bw() 
+
+GrowthCurveTurner %>% 
+  filter(TurChl_ugL<1500) %>% 
+  filter(meanDeltaOD_h>0.03) %>% 
+  filter(Strain == "PC-rich_077") %>% 
+  ggplot(aes(x = meanDeltaOD_h, y = TurChl_ugL)) +
+  geom_point(aes(x = meanDeltaOD_h, y = TurChl_ugL), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA77G_720, aes(x=0.06, y=10000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  #labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (720 nm)") +
+  theme_bw() 
+
+GrowthCurveTurner %>% 
+  filter(TurChl_ugL<1000) %>% 
+  filter(meanDeltaOD_h>0.03) %>% 
+  filter(Strain == "PE-rich_048") %>% 
+  ggplot(aes(x = meanDeltaOD_h, y = TurChl_ugL)) +
+  geom_point(aes(x = meanDeltaOD_h, y = TurChl_ugL), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA48R_720, aes(x=0.06, y=10000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  #labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (720 nm)") +
+  theme_bw() 
+
+GrowthCurveTurner %>% 
+  filter(TurChl_ugL<1200) %>% 
+  filter(meanDeltaOD_h>0.05) %>% 
+  filter(Strain == "PE-rich_127") %>% 
+  ggplot(aes(x = meanDeltaOD_h, y = TurChl_ugL)) +
+  geom_point(aes(x = meanDeltaOD_h, y = TurChl_ugL), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA127R_720, aes(x=0.06, y=10000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  #labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (720 nm)") +
+  theme_bw() 
+
+rm(data_textPaersonBA56G_720, data_textPaersonBA77G_720, data_textPaersonBA48R_720, data_textPaersonBA127R_720)
+```
+# Cleaning the environment
+
+```{r}
+rm(lmDeltaOD, my_dataDeltaOD, ChlDataMeta, CorrDeltaTur)
+```
+
+
+# Save RDS that create stats and tables
+
+```{r save rds}
+# saveRDS(TurnerGrowthCorrelation_Delta, file.path(RDSTablePath, paste(Project, "Tab_TurnerDeltaODCorrelation.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+
+--------------------------------------------------- MD Pico --------------------------------------------
+
+# IMPORT MD PICO CORRELATION DATA
+
+```{r set project variables, warning = FALSE, echo = FALSE}
+Project <- "BalticPhotoperiod"
+zip_file <- file.path("..", "Data", "RawData", "MDPico.zip")
+
+# List files in the extracted folder with a ".txt" extension
+CountFiles <- unzip(zip_file, list = TRUE)
+CountFiles <- CountFiles[grepl(".csv$", CountFiles$Name), "Name"]
+print(CountFiles)
+
+FileID <- "ExperimentSummaryData"
+FileEncode <- "UTF-8" 
+HeaderRows <- 0
+DelimCS <- ","
+```
+
+# Read fread_plus function
+
+```{r data read adds filename and cdate, warning=FALSE, message=FALSE, echo=FALSE}
+# Define function to read and process each file
+fread_plus <- function(Flnm, FileEncode, Delim) {
+  con <- unz(zip_file, Flnm)
+  
+  # Read the file using read.table
+  data <- read.table(con, skip = HeaderRows, encoding = FileEncode, sep = Delim, header = TRUE)
+  
+  # Use tryCatch to handle errors during the closing of the connection
+  tryCatch(
+    close(con),
+    error = function(e) {
+      warning("Error closing connection: ", e$message)
+    })
+  
+  data <- data %>%
+    mutate(Filename = Flnm, CDateTime = ymd_hms(file.info(zip_file)$ctime)) 
+  return(data)
+}
+
+# Use map_df to read and process all files in CountFiles
+MDPicoTidy <- CountFiles %>%
+  map_df(~fread_plus(Flnm = ., FileEncode = FileEncode, Delim = DelimCS))
+```
+
+```{r tidy CountTidy}
+
+MDPicoTidy <- MDPicoTidy %>% 
+  select(-c("Concentration", "Group", "Compound", "CDateTime")) %>% # remove superfluous columns
+  mutate(Filename = str_remove(string = Filename, pattern = ".csv")) %>%
+  mutate(Filename = str_remove(string = Filename, pattern = "../MDPico/")) %>%
+  separate(Filename, into = c("ObsDate", "Project", "Initials",  "PlateNr", "IndStud", "Organism", "Count"), sep = "([\\/\\/\\_\\_\\_\\_\\_])", remove = FALSE) %>%
+  select(-c("IndStud", "Organism", "Count")) %>% 
+  mutate(ObsDate = ymd_hm(ObsDate)) 
+```
+
+# Load MDPicoMetaData catalog
+
+```{r load local metadatacatalog, message = FALSE, warning = FALSE, echo=FALSE}
+gs4_deauth()
+
+# this is the URL or ID of a Sheet readable by anyone (with a link)
+
+MDPicoMetaData <- read_sheet("https://docs.google.com/spreadsheets/d/1Lerp5u25kzBtaBbnOYElYqUP59cn68gJpxxayhnGdkw/edit#gid=0") %>%
+  #mutate(Date = as.numeric(Date)) %>%
+  mutate(Date = ymd_hm(`Date`)) %>%
+  separate(Date, into = c("Date_count", "Time_count"), sep = " ", remove = FALSE) %>%
+  mutate(Date_count = ymd(`Date_count`)) 
+```
+
+
+# Merge MD Pico and Culture catalog
+
+```{r}
+MDPicoMeta <- MDPicoMetaData %>%
+  left_join(., CultureCatalog, by = c("SampleID" = "SampleID")) %>% 
+  drop_na(Strain)
+```
+
+# check if I do not lost some data!
+
+```{r}
+MDPicoAll <- MDPicoTidy %>%
+  mutate(PlateNr = as.double(PlateNr)) %>%
+  left_join(., MDPicoMeta, by = c("Well.Name" = "WellNumber", "PlateNr" = "PlateNumber")) %>% 
+  drop_na(Strain)
+```
+
+```{r, warning = FALSE}
+MDPicoAll <- MDPicoAll %>%
+  mutate(culture_inocul_L = as.double(culture_inocul_L)) %>%
+  mutate(CapAreaPercentage = as.double(CapAreaPercentage)) %>%
+
+  mutate(CellmL_MDPico = (`Cell.Count` * (0.001/culture_inocul_L)) /(CapAreaPercentage/100)) %>%
+  # mutate(cellsml = `cellsmlwithoutpercentage`/(CapAreaPercentage/100))
+group_by(Date, SampleID) %>%
+
+summarize(Well.Name, Cell.Count, Filename, ObsDate, PlateNr, PlateID, SampleID, Date, Date_count, Time_count, media_inocul_L, culture_inocul_L, CapAreaPercentage, Run, Strain, ExpDate, Par_ue, Photoperiod, PARPhotonDose_day, Tube, O2, WL, LightShape, ExpEndDate, CellmL_MDPico, meanCellmL_MDPico = mean(CellmL_MDPico), sdCellmL_MDPico = sd(CellmL_MDPico)) %>%
+
+ungroup() %>%
+  
+group_by(SampleID) %>%
+  arrange(Date_count) %>%
+  mutate(E_days = as.numeric((Date_count - ExpDate[1]))) %>%
+ungroup() %>% 
+  rename(Cell_Count=Cell.Count) %>% 
+  rename(Well_Name=Well.Name) %>% 
+  rename(MeasDate = ObsDate) %>% 
+  rename(ObsDateTime = Date) %>% 
+  rename(ObsDate_count = Date_count) %>% 
+  rename(ObsTime_count = Time_count) %>% 
+  rename(FilenameMDPico=Filename)  
+```
+
+# Create Preliminary plot
+
+```{r preliminary plot}
+MDPicoAll %>%
+  ggplot() +
+  geom_point(aes(x = E_days, y = meanCellmL_MDPico)) +
+  # scale_x_continuous(breaks=seq(0, 14, by = 7)) +
+  # coord_cartesian(xlim = c (-1, 15)) +
+  ggh4x::facet_nested(rows = vars(Par_ue), cols = vars(Strain, Photoperiod), labeller = labeller(Ex_WL = label_both, strain = label_value, Par_ue = label_both, WL = label_both, Photoperiod = label_value)) +
+  theme_bw()
+```
+
+# Removing unrevelant column
+
+```{r}
+#colnames(MDPicoAll)
+MDPicoAll <- MDPicoAll %>%
+  select(-c(MeasDate, PlateNr, PlateID, Well_Name, media_inocul_L, culture_inocul_L, CapAreaPercentage)) %>% 
+  drop_na(Cell_Count)
+```
+
+# Cleaning the environment
+
+```{r}
+rm(CultureCatalog, MDPicoMeta, MDPicoMetaData, MDPicoTidy)
+```
+
+# Save rds for further analysis if needed
+
+```{r save rds}
+# saveRDS(MDPicoAll, file.path(DataOut, paste(Project, "Imported_MDPicoData.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+
+
+-------------------------------------# MD Pico vs. MC OD (Growth Curve) correlation ---------------------------------------
+
+# Prepare ObsTime_count to match with MC ToD data
+
+```{r}
+MDPicoAll<-MDPicoAll %>% 
+  mutate(Strain=case_when(Strain=="BA127R"~"PE-rich_127",
+         Strain=="BA48R"~"PE-rich_048",
+        Strain=="BA56G"~"PC-rich_056",
+         Strain=="BA77G"~"PC-rich_077")) %>% 
+  mutate(ObsTime_count=as.character(ObsTime_count))
+  
+MDPicoAll$ToD<-gsub("([0-9]+):.*", "\\1", MDPicoAll$ObsTime_count)
+
+MDPicoAll<-MDPicoAll %>% 
+  mutate(ToD=as.double(ToD))
+```
+
+# Merge MD Pico and MC OD (Growth Curve) data
+
+```{r, warning = FALSE, echo=FALSE}
+MCMDPicoCorr <- GrowthCurve %>%
+  full_join(., MDPicoAll, by = c("ToD" = "ToD", "SampleID" = "SampleID", "E_days"="E_days", "Strain"="Strain","Par_ue" = "Par_ue", "Photoperiod" = "Photoperiod", "Run" = "Run", "Tube" = "Tube", "O2" = "O2", "WL" = "WL", "LightShape" = "LightShape", "ExpDate" = "ExpDate", "ExpEndDate" = "ExpEndDate"))  %>% 
+  drop_na(meanOD680_h) %>% 
+  drop_na(Cell_Count)
+```
+
+# Create preliminary plots
+
+```{r preliminary plots}
+
+MCMDPicoCorr %>%
+  ggplot() +
+  geom_point(aes(x = meanOD680_h, y = CellmL_MDPico)) +
+  #labs(y = "Number of cells (N/mL)", x = "Absorbance" ~ "("~OD[750]~")") +
+  ggh4x::facet_nested(rows = vars(Strain), labeller = labeller(Ex_WL = label_both, strain = label_value, Par_ue = label_both, WL = label_both, Photoperiod = label_value)) +
+  theme_bw()
+
+MCMDPicoCorr %>%
+  ggplot() +
+  geom_point(aes(x = meanOD720_h, y = CellmL_MDPico)) +
+  #labs(y = "Number of cells (N/mL)", x = "Absorbance" ~ "("~OD[750]~")") +
+  ggh4x::facet_nested(rows = vars(Strain), labeller = labeller(Ex_WL = label_both, strain = label_value, Par_ue = label_both, WL = label_both, Photoperiod = label_value)) +
+  theme_bw()
+
+MCMDPicoCorr %>%
+  ggplot() +
+  geom_point(aes(x = meanDeltaOD_h, y = CellmL_MDPico)) +
+  #labs(y = "Number of cells (N/mL)", x = "Absorbance" ~ "("~OD[750]~")") +
+  ggh4x::facet_nested(rows = vars(Strain), labeller = labeller(Ex_WL = label_both, strain = label_value, Par_ue = label_both, WL = label_both, Photoperiod = label_value)) +
+  theme_bw()
+```
+
+Pearson Correlation Coefficient and Linear Regression and coefficient of determination or R²
+https://www.datacamp.com/tutorial/linear-regression-R
+
+# Calculate Pearson correlation for cell count (MD Pico) vs OD720 (MC)
+
+```{r}
+CorrCleanOD720 <- MCMDPicoCorr %>% 
+  filter(Strain == "PC-rich_056")
+my_dataOD720<- CorrCleanOD720
+ggscatter(my_dataOD720, x = "meanOD720_h", y = "CellmL_MDPico", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataOD720
+lmOD720 = lm(CellmL_MDPico~meanOD720_h, data = my_dataOD720)
+summary(lmOD720)
+# NmL = (OD720*199514099)+5596282
+# Adjusted R-squared: 0.5312
+# R=0.73; p=3.9e-16
+
+CorrCleanOD720 <- MCMDPicoCorr %>% 
+  filter(Strain == "PC-rich_077")
+my_dataOD720<- CorrCleanOD720
+ggscatter(my_dataOD720, x = "meanOD720_h", y = "CellmL_MDPico", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataOD720
+lmOD720 = lm(CellmL_MDPico~meanOD720_h, data = my_dataOD720)
+summary(lmOD720)
+# NmL = (OD720*214694020)+31010844
+# Adjusted R-squared: 0.7894
+# R=0.89; p=2.2e-16
+
+
+CorrCleanOD720 <- MCMDPicoCorr %>% 
+  filter(Strain == "PE-rich_048")
+my_dataOD720<- CorrCleanOD720
+ggscatter(my_dataOD720, x = "meanOD720_h", y = "CellmL_MDPico", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataOD720
+lmOD720 = lm(CellmL_MDPico~meanOD720_h, data = my_dataOD720)
+summary(lmOD720)
+# NmL = (OD720*216637133)+60707950
+# Adjusted R-squared: 0.4508
+# R=0.67; p=1.7e-11
+
+
+CorrCleanOD720 <- MCMDPicoCorr %>% 
+  filter(CellmL_MDPico>0.3e08) %>% 
+  filter(Strain == "PE-rich_127") 
+my_dataOD720<- CorrCleanOD720
+ggscatter(my_dataOD720, x = "meanOD720_h", y = "CellmL_MDPico", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataOD720
+lmOD720 = lm(CellmL_MDPico~meanOD720_h, data = my_dataOD720)
+summary(lmOD720)
+# NmL = (OD720*151131397)+79519260
+# Adjusted R-squared: 0.4035
+# R=0.64; p = 2.7e-09
+
+```
+
+# Calculate Pearson correlation for cell count (MD Pico) vs OD680 (MC)
+
+```{r}
+CorrCleanOD680 <- MCMDPicoCorr %>% 
+  filter(Strain == "PC-rich_056")
+my_dataOD680<- CorrCleanOD680
+ggscatter(my_dataOD680, x = "meanOD680_h", y = "CellmL_MDPico", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataOD680
+lmOD680 = lm(CellmL_MDPico~meanOD680_h, data = my_dataOD680)
+summary(lmOD680)
+# NmL = (OD680*159866357)+3667252
+# Adjusted R-squared: 0.5344
+# R=0.73; p=2.8e-16
+
+CorrCleanOD680 <- MCMDPicoCorr %>% 
+  filter(Strain == "PC-rich_077")
+my_dataOD680<- CorrCleanOD680
+ggscatter(my_dataOD680, x = "meanOD680_h", y = "CellmL_MDPico", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataOD680
+lmOD680 = lm(CellmL_MDPico~meanOD680_h, data = my_dataOD680)
+summary(lmOD680)
+# NmL = (OD680*174836861)+27696294
+# Adjusted R-squared: 0.8286
+# R=0.91; p=2.2e-16
+
+
+CorrCleanOD680 <- MCMDPicoCorr %>% 
+  filter(Strain == "PE-rich_048")
+my_dataOD680<- CorrCleanOD680
+ggscatter(my_dataOD680, x = "meanOD680_h", y = "CellmL_MDPico", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataOD680
+lmOD680 = lm(CellmL_MDPico~meanOD680_h, data = my_dataOD680)
+summary(lmOD680)
+# NmL = (OD680*195634847)+50753022
+# Adjusted R-squared: 0.5202
+# R=0.72; p=9.5e-14
+
+
+CorrCleanOD680 <- MCMDPicoCorr %>% 
+  filter(Strain == "PE-rich_127") %>% 
+  filter(CellmL_MDPico>0.3e08) 
+my_dataOD680<- CorrCleanOD680
+ggscatter(my_dataOD680, x = "meanOD680_h", y = "CellmL_MDPico", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson")
+my_dataOD680
+lmOD680 = lm(CellmL_MDPico~meanOD680_h, data = my_dataOD680)
+summary(lmOD680)
+# NmL = (OD680*124907790)+77641680
+# Adjusted R-squared: 0.4242
+# R=0.65; p = 7.7e-10
+```
+
+# Create table with Pearson correlation and preliminary plot (MD Pico vs MC OD720)
+
+```{r}
+data_textPaersonBA56G_720 <- data.frame(Linear_regression = c('N/mL = (OD720*199514099)+5596282'), Strain = c("PC-rich_056"), OD = c("720"), R_square = c(0.5312), R = c(0.73), p_value = c(0))
+data_textPaersonBA77G_720 <- data.frame(Linear_regression = c('N/mL = (OD720*214694020)+31010844'), Strain = c("PC-rich_077"), OD = c("720"), R_square = c(0.7894), R = c(0.89), p_value = c(0))
+data_textPaersonBA48R_720 <- data.frame(Linear_regression = c('N/mL = (OD720*216637133)+60707950'), Strain = c("PE-rich_048"), OD = c("720"), R_square = c(0.4508), R = c(0.67), p_value = c(0))
+data_textPaersonBA127R_720 <- data.frame(Linear_regression = c('N/mL = (OD720*151131397)+79519260'), Strain = c("PE-rich_127"), OD = c("720"), R_square = c(0.4035), R = c(0.64), p_value = c(0))
+
+MDPicoGrowthCorrelation_720<-rbind(data_textPaersonBA56G_720, data_textPaersonBA77G_720, data_textPaersonBA48R_720, data_textPaersonBA127R_720)
+
+MCMDPicoCorr %>% 
+  filter(Strain == "PC-rich_056") %>% 
+  ggplot(aes(x = meanOD720_h, y = CellmL_MDPico)) +
+  geom_point(aes(x = meanOD720_h, y = CellmL_MDPico), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA56G_720, aes(x=0.06, y=20000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (720 nm)") +
+  theme_bw() 
+
+MCMDPicoCorr %>% 
+  filter(Strain == "PC-rich_077") %>% 
+  ggplot(aes(x = meanOD720_h, y = CellmL_MDPico)) +
+  geom_point(aes(x = meanOD720_h, y = CellmL_MDPico), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA77G_720, aes(x=0.06, y=20000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (720 nm)") +
+  theme_bw() 
+
+MCMDPicoCorr %>% 
+  filter(Strain == "PE-rich_048") %>% 
+  ggplot(aes(x = meanOD720_h, y = CellmL_MDPico)) +
+  geom_point(aes(x = meanOD720_h, y = CellmL_MDPico), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA48R_720, aes(x=0.06, y=20000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (720 nm)") +
+  theme_bw() 
+
+MCMDPicoCorr %>% 
+  filter(Strain == "PE-rich_127") %>% 
+  filter(CellmL_MDPico>0.3e08) %>% 
+  ggplot(aes(x = meanOD720_h, y = CellmL_MDPico)) +
+  geom_point(aes(x = meanOD720_h, y = CellmL_MDPico), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA127R_720, aes(x=0.06, y=20000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (720 nm)") +
+  theme_bw() 
+
+rm(data_textPaersonBA56G_720, data_textPaersonBA77G_720, data_textPaersonBA48R_720, data_textPaersonBA127R_720)
+```
+
+# Create table with Pearson correlation and preliminary plot (MD Pico vs MC OD680)
+
+```{r}
+
+data_textPaersonBA56G_680 <- data.frame(Linear_regression = c('N/mL = (OD680*159866357)+3667252'), Strain = c("PC-rich_056"), OD = c("680"), R_square = c(0.5344), R = c(0.73), p_value = c(0))
+data_textPaersonBA77G_680 <- data.frame(Linear_regression = c('N/mL = (OD680*174836861)+27696294'), Strain = c("PC-rich_077"), OD = c("680"), R_square = c(0.82864), R = c(0.91), p_value = c(0))
+data_textPaersonBA48R_680 <- data.frame(Linear_regression = c('N/mL = (OD680*195634847)+50753022'), Strain = c("PE-rich_048"), OD = c("680"), R_square = c(0.5202), R = c(0.72), p_value = c(0))
+data_textPaersonBA127R_680 <- data.frame(Linear_regression = c('N/mL = (OD680*124907790)+77641680'), Strain = c("PE-rich_127"), OD = c("680"), R_square = c(0.4242), R = c(0.65), p_value = c(0))
+
+MDPicoGrowthCorrelation_680<-rbind(data_textPaersonBA56G_680, data_textPaersonBA77G_680, data_textPaersonBA48R_680, data_textPaersonBA127R_680)
+
+
+MCMDPicoCorr %>% 
+  filter(Strain == "PC-rich_056") %>% 
+  ggplot(aes(x = meanOD680_h, y = CellmL_MDPico)) +
+  geom_point(aes(x = meanOD680_h, y = CellmL_MDPico), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA56G_680, aes(x=0.06, y=20000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (OD680 nm)") +
+  theme_bw() 
+
+MCMDPicoCorr %>% 
+  filter(Strain == "PC-rich_077") %>% 
+  ggplot(aes(x = meanOD680_h, y = CellmL_MDPico)) +
+  geom_point(aes(x = meanOD680_h, y = CellmL_MDPico), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA77G_680, aes(x=0.06, y=20000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (OD680 nm)") +
+  theme_bw()
+
+MCMDPicoCorr %>% 
+  filter(Strain == "PE-rich_048") %>% 
+  ggplot(aes(x = meanOD680_h, y = CellmL_MDPico)) +
+  geom_point(aes(x = meanOD680_h, y = CellmL_MDPico), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA48R_680, aes(x=0.06, y=20000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (OD680 nm)") +
+  theme_bw() 
+
+MCMDPicoCorr %>% 
+  filter(Strain == "PE-rich_127") %>% 
+  filter(CellmL_MDPico>0.3e08) %>% 
+  ggplot(aes(x = meanOD680_h, y = CellmL_MDPico)) +
+  geom_point(aes(x = meanOD680_h, y = CellmL_MDPico), show.legend = "none", colour = "midnightblue", size = 3, alpha = 0.4) +
+  geom_text(data=data_textPaersonBA127R_680, aes(x=0.06, y=20000, label=Linear_regression), size=4) +
+  geom_smooth(method=lm, se=FALSE, colour = "gray22") +
+  stat_cor(method="pearson") +
+  labs(y = "Number of cells (N" ~mL^-1 ~")", x = "Absorbance (OD680 nm)") +
+  theme_bw() 
+
+rm(data_textPaersonBA56G_680, data_textPaersonBA77G_680, data_textPaersonBA48R_680, data_textPaersonBA127R_680)
+```
+
+# Create table with equations obtained from Pearson correlation (for calculate number of cells based on OD)
+
+```{r}
+MDPicoGrowthCorrelation<-rbind(MDPicoGrowthCorrelation_680, MDPicoGrowthCorrelation_720)
+
+rm(MDPicoGrowthCorrelation_680, MDPicoGrowthCorrelation_720)
+```
+
+# Save RDS that create stats and tables
+
+```{r save rds}
+# saveRDS(MDPicoGrowthCorrelation, file.path(RDSTablePath, paste(Project, "Tab_MDPicoMCODCorrelation.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+# Cleaning the environment
+
+```{r}
+rm(lmOD680, lmOD720, CorrCleanOD720, CorrCleanOD680, my_dataOD680, my_dataOD720)
+```
+
+
+
+------------------------------------------------------ESTIMATIONS --------------------------------------------------
+
+-------------------------- Estimated ug Chl ug/L every h based on correlation from Turner -----------------------------
+-------------------------- Estimated number of cells/mL every h based on correlation from MDPico -----------------------------
+
+# Estimated number of ug Chl ug/L every h based on correlation from Turner and Estimated number of cells/mL every h based on correlation from MDPico (MDPicoGrowthCorrelation)
+
+```{r}
+
+MCBA56G <- GrowthCurve %>% 
+filter(Strain == "PC-rich_056") %>% 
+mutate(cellmL_OD680_MDPico = 159866357*meanOD680_h+3667252) %>% 
+mutate(cellmL_OD720_MDPico = 199514099*meanOD680_h+5596282) %>% 
+mutate(Chla_ugL_Tur = 3822.21*meanDeltaOD_h-48.71) 
+
+MCBA77G <- GrowthCurve %>% 
+filter(Strain == "PC-rich_077") %>% 
+mutate(cellmL_OD680_MDPico = 174836861*meanOD680_h+27696294) %>% 
+mutate(cellmL_OD720_MDPico = 214694020*meanOD680_h+31010844) %>% 
+mutate(Chla_ugL_Tur = 16779.68*meanDeltaOD_h+3.837) 
+  
+MCBA48R <- GrowthCurve %>% 
+filter(Strain == "PE-rich_048") %>% 
+mutate(cellmL_OD680_MDPico = 195634847*meanOD680_h+50753022) %>% 
+mutate(cellmL_OD720_MDPico = 216637133*meanOD680_h+60707950) %>% 
+mutate(Chla_ugL_Tur = 2805.1*meanDeltaOD_h+183.9)
+
+MCBA127R <- GrowthCurve %>% 
+filter(Strain == "PE-rich_127") %>% 
+mutate(cellmL_OD680_MDPico = 124907790*meanOD680_h+77641680) %>% 
+mutate(cellmL_OD720_MDPico = 151131397*meanOD680_h+79519260) %>% 
+mutate(Chla_ugL_Tur = 10316.44*meanDeltaOD_h+102.61)
+
+GrowthCurve_All <- rbind(MCBA127R, MCBA48R, MCBA56G, MCBA77G)
+
+GrowthCurve_All<-GrowthCurve_All %>% # estimate cell per L
+mutate(cellL_OD680_MDPico=cellmL_OD680_MDPico*1000) %>% 
+mutate(cellL_OD720_MDPico=cellmL_OD720_MDPico*1000)
+
+rm(MCBA127R, MCBA48R, MCBA56G, MCBA77G)
+```
+
+
+# Save rds for further analysis
+
+```{r save rds}
+# saveRDS(GrowthCurve_All, file.path(DataOut, paste(Project, "Imported_CrossCalibrationData.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+```
+
+
+# Correlations from Polish flowcytometer (BD Accuri) and Polish Spec if needed
+
+```{r}
+
+#           Strain == 'BA77G' ~ 5766620.03*OD750+5146.44,
+#          Strain == 'BA56G' ~ 815627.77*OD750-6499.89, 
+#          Strain == 'BA48R' ~ 110516351.55*OD750-568505.87,
+#          Strain == 'BA127R' ~ 124271003.22*OD750-1691760.02))
+```
+
+
