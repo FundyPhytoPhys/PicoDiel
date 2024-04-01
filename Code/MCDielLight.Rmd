@@ -52,7 +52,7 @@ TableRdsPath <- file.path("..", "Output", "TablesRDS")
 ## JVPSII light response and calibrations
 ```{r jvpsii}
 
-
+#LRC <- readRDS(file = file.path("..", "Data","ImportedData", "ImportedSolisenseData", "PicoDiel_Imported_SolisenseLight_LRC.Rds"))
 ```
 
 
