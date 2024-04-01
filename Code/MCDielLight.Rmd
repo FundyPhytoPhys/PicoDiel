@@ -51,12 +51,23 @@ TableRdsPath <- file.path("..", "Output", "TablesRDS")
 
 ## JVPSII light response and calibrations
 Think about how to calibrate JVPSII; what does it mean?  Use e cell-1 s-1?
+Need to import calibrations to convert OD720 to cell L-1 and OD680 to chl L-1
 ```{r jvpsii}
 
 #JVPSII_eLs_ModelTerms <- readRDS(file = file.path("..", "Data","CleanedData", "JVPSII_eLs_ModelTerms.Rds"))
 
+#need to filter and summarize data to get single calibration for each SampleID...
+
 Processed_Solisense_LRC <- readRDS(file = file.path("..", "Data","CleanedData", "Processed_Solisense_LRC.Rds")) |>
-select(c("SampleID", "Strain", "Ex_WL",  "GRCplatt_Model", "GRCplatt_Param")) 
+select(-c("data", "lrcplatt_Model","lrcplatt_Predict", "lrcplatt_Glance")) |>
+  filter(Ex_WL == 445) |> #temporary hack; later do spectrally weighted estimates
+  unnest(lrcplatt_Param) |>
+  select(-c("std.error", "statistic", "p.value")) |>
+  pivot_wider(names_from = c( term, Ex_WL,), values_from = c(estimate)) |>
+  filter(E_days < 8,
+         E_days > 2) |>
+  group_by(SampleID) |>
+  summarize(across(`a_445`:`Pmax_445`, mean))  # hack temporary fix to collapse duplicated LRC parameters for the same SampleID
 ```
 
 
@@ -226,10 +237,28 @@ MCDataHour |>
 ```
 # JVPSII exploration
 ```{r jvpsii eLs 445}
-MCDataHour <- MCDataHour |>
-  mutate(JVPSII_eLh = Actinic_umolphotonsm2h * JVPSII_eLs_ModelTerms$Slope[which(JVPSII_eLs_ModelTerms$Ex_WL == 445)] * 3600)
+#lrcplatt <- function(I, a, b, Pmax){Pmax * (1-exp(-a*I/Pmax)) * exp(-b*I/Pmax)}
+
+MCDataHour2 <- MCDataHour |>
+  filter(SampleID %in% intersect(unique(Processed_Solisense_LRC$SampleID), unique(MCDataHour$SampleID))) |> #hack to match JVPSII LRC estimators to available files
+  left_join(Processed_Solisense_LRC, by = c("SampleID")) |> mutate(JVPSII_eLh = Pmax_445 * (1 - exp(-a_445*Actinic_umolphotonsm2h * 6.022e17/Pmax_445)) * exp(-b_445*Actinic_umolphotonsm2h  * 6.022e17/Pmax_445))
+
+
 ```
 
+```{r explore jvpsii}
+MCDataHour2 |>
+  filter(Run == 39) |>
+  filter(time >= 24) |>
+  filter(time <= 96) |>
+  filter(Tube == 4) |>
+  ggplot() +
+  # geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
+  # scale_color_gradient(low = "black", high = "yellow") +
+  geom_point(aes(x = Actinic_umolphotonsm2h, y = JVPSII_eLh, colour = ToD)) +
+  facet_grid(cols = vars(Tube)) +
+  theme_bw()
+```
 
 ------------------------------# Support Vector regression---------------------------------------------------
 
