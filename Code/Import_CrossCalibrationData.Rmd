@@ -66,7 +66,7 @@ library(scales)
 
 ```{r set project variables}
 Project <- "PicoDiel"
-DataOut <- file.path("..", "Data", "ImportedData", "ImportedPigmentsData")
+DataOut <- file.path("..", "Data", "ImportedData", "ImportedCrossCalibrationData")
 
 PlotsPath <- file.path("..", "Output", "Plots")
 RDSPlotPath <- file.path("..", "Output", "PlotsRDS")
@@ -95,6 +95,7 @@ CultureCatalog<-CultureCatalog %>%
 ```{r set project variables}
 Project <- "PicoDiel"
 DataIn <- file.path("..", "Data", "ProcessedData", "ProcessedGrowthCurveData")
+DataOut <- file.path("..", "Data", "ImportedData", "ImportedCrossCalibrationData")
 ```
 
 # List Growth curve Rds
@@ -346,6 +347,8 @@ rm(lmDeltaOD, my_dataDeltaOD, ChlDataMeta, CorrDeltaTur)
 
 ```{r save rds}
 # saveRDS(TurnerGrowthCorrelation_Delta, file.path(RDSTablePath, paste(Project, "Tab_TurnerDeltaODCorrelation.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+
+saveRDS(TurnerGrowthCorrelation_Delta, file.path(DataOut, paste(Project, "Tab_TurnerDeltaODCorrelation.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
 ```
 
 
@@ -355,6 +358,7 @@ rm(lmDeltaOD, my_dataDeltaOD, ChlDataMeta, CorrDeltaTur)
 
 ```{r set project variables, warning = FALSE, echo = FALSE}
 Project <- "PicoDiel"
+DataOut <- file.path("..", "Data", "ImportedData", "ImportedCrossCalibrationData")
 zip_file <- file.path("..", "Data", "RawData", "MDPico.zip")
 
 # List files in the extracted folder with a ".txt" extension
@@ -796,6 +800,8 @@ rm(MDPicoGrowthCorrelation_680, MDPicoGrowthCorrelation_720)
 
 ```{r save rds}
 # saveRDS(MDPicoGrowthCorrelation, file.path(RDSTablePath, paste(Project, "Tab_MDPicoMCODCorrelation.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+
+saveRDS(MDPicoGrowthCorrelation, file.path(DataOut, paste(Project, "Tab_MDPicoMCODCorrelation.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
 ```
 
 # Cleaning the environment
