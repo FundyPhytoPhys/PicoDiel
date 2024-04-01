@@ -235,18 +235,54 @@ MCDataHour |>
   theme_bw()
 
 ```
+
+
 # JVPSII exploration
+# Need to import JVPSII e cell-1 s-1 or e- chl-1 s-1 instead of e L-1 s-1 for generalization
 ```{r jvpsii eLs 445}
 #lrcplatt <- function(I, a, b, Pmax){Pmax * (1-exp(-a*I/Pmax)) * exp(-b*I/Pmax)}
 
+#worried about unit conversions here!
 MCDataHour2 <- MCDataHour |>
   filter(SampleID %in% intersect(unique(Processed_Solisense_LRC$SampleID), unique(MCDataHour$SampleID))) |> #hack to match JVPSII LRC estimators to available files
-  left_join(Processed_Solisense_LRC, by = c("SampleID")) |> mutate(JVPSII_eLh = Pmax_445 * (1 - exp(-a_445*Actinic_umolphotonsm2h * 6.022e17/Pmax_445)) * exp(-b_445*Actinic_umolphotonsm2h  * 6.022e17/Pmax_445))
+  left_join(Processed_Solisense_LRC, by = c("SampleID")) |> mutate(JVPSII_umoleLh = 3600 * (Pmax_445 *  (1 - exp((-a_445*Actinic_umolphotonsm2h/3600)/(Pmax_445)) * exp(-b_445*Actinic_umolphotonsm2h/3600/(Pmax_445))
+                                                                                                         )
+                                                                                            )
+                                                                   )
 
-
+# lrcplatt <- function(I, a, b, Pmax){Pmax * (1-exp(-a*I/Pmax)) * exp(-b*I/Pmax)}
+# 
+# 
+# SolFitsMetaLRC <- SolFitsMeta %>%
+#   nest(data = -c("SampleID", "Run", "Strain" ,"ExpDate","Par_ue", "Photoperiod", "O2", "WL", "MC", "Tube","Ex_WL","LightShape", "ExpEndDate", "PARPhotonDose_day", "ObsDate", "E_days")) %>% #head(50) %>% 
+#   mutate(lrcplatt_Model = map(data, possibly(~nlsLM(JVPSII_umol_eLs ~ lrcplatt(I = ActPARCorr, a, b, Pmax),
 ```
 
 ```{r explore jvpsii}
+MCDataHour2 |>
+  filter(Run == 39) |>
+  filter(time >= 24) |>
+  filter(time <= 96) |>
+  #filter(Tube == 4) |>
+  ggplot() +
+  # geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
+  # scale_color_gradient(low = "black", high = "yellow") +
+  geom_point(aes(x = Actinic_umolphotonsm2h, y = JVPSII_umoleLh, colour = ToD)) +
+  facet_grid(cols = vars(Tube)) +
+  theme_bw()
+
+MCDataHour2 |>
+  filter(Run == 39) |>
+  filter(time >= 24) |>
+  filter(time <= 96) |>
+  #filter(Tube == 4) |>
+  ggplot() +
+  # geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
+  # scale_color_gradient(low = "black", high = "yellow") +
+  geom_point(aes(x = ToD, y = JVPSII_umoleLh, colour = Actinic_umolphotonsm2h)) +
+  facet_grid(cols = vars(Tube)) +
+  theme_bw()
+
 MCDataHour2 |>
   filter(Run == 39) |>
   filter(time >= 24) |>
@@ -255,7 +291,7 @@ MCDataHour2 |>
   ggplot() +
   # geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
   # scale_color_gradient(low = "black", high = "yellow") +
-  geom_point(aes(x = Actinic_umolphotonsm2h, y = JVPSII_eLh, colour = ToD)) +
+  geom_point(aes(x = JVPSII_umoleLh, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 ```
