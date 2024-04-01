@@ -50,9 +50,13 @@ TableRdsPath <- file.path("..", "Output", "TablesRDS")
 ```
 
 ## JVPSII light response and calibrations
+Think about how to calibrate JVPSII; what does it mean?  Use e cell-1 s-1?
 ```{r jvpsii}
 
-#LRC <- readRDS(file = file.path("..", "Data","ImportedData", "ImportedSolisenseData", "PicoDiel_Imported_SolisenseLight_LRC.Rds"))
+#JVPSII_eLs_ModelTerms <- readRDS(file = file.path("..", "Data","CleanedData", "JVPSII_eLs_ModelTerms.Rds"))
+
+Processed_Solisense_LRC <- readRDS(file = file.path("..", "Data","CleanedData", "Processed_Solisense_LRC.Rds")) |>
+select(c("SampleID", "Strain", "Ex_WL",  "GRCplatt_Model", "GRCplatt_Param")) 
 ```
 
 
@@ -220,7 +224,11 @@ MCDataHour |>
   theme_bw()
 
 ```
-
+# JVPSII exploration
+```{r jvpsii eLs 445}
+MCDataHour <- MCDataHour |>
+  mutate(JVPSII_eLh = Actinic_umolphotonsm2h * JVPSII_eLs_ModelTerms$Slope[which(JVPSII_eLs_ModelTerms$Ex_WL == 445)] * 3600)
+```
 
 
 ------------------------------# Support Vector regression---------------------------------------------------
