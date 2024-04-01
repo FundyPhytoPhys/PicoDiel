@@ -258,6 +258,7 @@ MCDataHour2 <- MCDataHour |>
 #   mutate(lrcplatt_Model = map(data, possibly(~nlsLM(JVPSII_umol_eLs ~ lrcplatt(I = ActPARCorr, a, b, Pmax),
 ```
 
+
 ```{r explore jvpsii}
 MCDataHour2 |>
   filter(Run == 39) |>
@@ -287,12 +288,24 @@ MCDataHour2 |>
   filter(Run == 39) |>
   filter(time >= 24) |>
   filter(time <= 96) |>
-  filter(Tube == 4) |>
+  #filter(Tube == 4) |>
   ggplot() +
   # geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
   # scale_color_gradient(low = "black", high = "yellow") +
   geom_point(aes(x = JVPSII_umoleLh, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
-  facet_grid(cols = vars(Tube)) +
+  #facet_grid(cols = vars(Tube)) +
+  theme_bw()
+
+MCDataHour2 |>
+  filter(Run == 39) |>
+  filter(time >= 24) |>
+  filter(time <= 96) |>
+  #filter(Tube == 4) |>
+  ggplot() +
+  # geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
+  # scale_color_gradient(low = "black", high = "yellow") +
+  geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour =  JVPSII_umoleLh)) +
+  #facet_grid(cols = vars(Tube)) +
   theme_bw()
 ```
 
