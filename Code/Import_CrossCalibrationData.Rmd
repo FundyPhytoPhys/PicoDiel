@@ -43,15 +43,11 @@ The tables with the compiled calibrations could be saved if needed (MDPicoGrowth
 ```{r load libraries}
 library(kableExtra)
 library(tidyverse)
-library(lubridate)
-library(stringr)
 library(broom)
-library(knitr)
+#library(knitr)
 library(OneR)
 library(zoo)
-library(strucchange)
-library(dplyr)
-library(magrittr)
+#library(strucchange)
 library(googledrive)
 library(googlesheets4)
 library(readxl)
@@ -68,9 +64,6 @@ library(scales)
 Project <- "PicoDiel"
 DataOut <- file.path("..", "Data", "ImportedData", "ImportedCrossCalibrationData")
 
-PlotsPath <- file.path("..", "Output", "Plots")
-RDSPlotPath <- file.path("..", "Output", "PlotsRDS")
-RDSTablePath <- file.path("..", "Output", "TablesRDS")
 ```
 
 
@@ -85,10 +78,7 @@ CultureCatalog<-CultureCatalog %>%
   select(-c(PrimaryOperator, Temp_c, ExpCul, ExpStartTime, O2_Category, Optode, OptodeCh, OptodeMeasure))
 ```
 
--------------------------------------- OD from MC (from growth curve) -----------------------------------------
 
-# IMPORT GROWTH CURVE DATA FOR CORRELATION
-(GrowthCurve already contain mean OD per h)
 
 # Set project variables
 
@@ -98,84 +88,29 @@ DataIn <- file.path("..", "Data", "ProcessedData", "ProcessedGrowthCurveData")
 DataOut <- file.path("..", "Data", "ImportedData", "ImportedCrossCalibrationData")
 ```
 
-# List Growth curve Rds
+# Load Turner data
 
-```{r Exported Rmd}
-list.files(path = DataIn, pattern = Project, full.names = TRUE)
-```
-# Read Growth curve Rds
-
-```{r read ProcessFile Sol}
-GrowthCurveFile <- "../Data/ProcessedData/ProcessedGrowthCurveData/PicoDiel_Processed_GrowthCurve.Rds"  
-GrowthCurveFileName <- str_split(string = GrowthCurveFile, "/")[[1]][3] %>%
-  str_remove(pattern = ".Rds")
-
-GrowthCurve <- readRDS(GrowthCurveFile)  %>%
-  ungroup()
-```
-
-
------------------------------------------------- Chla Turner ------------------------------------------------------
-# Load Turner catalog
-
-```{r load turner catalog, message = FALSE, warning = FALSE, echo=FALSE}
+```{r load turner data, message = FALSE, warning = FALSE, echo=FALSE}
 gs4_deauth()
 ChlData<- read_sheet("https://docs.google.com/spreadsheets/d/13mQm0B3siS65UuGjNdzvpHFomfuwn6aAg7dBoq1IqrM/edit#gid=0")
 
-as.data.frame(ChlData)
-ChlData <- ChlData 
-
-ChlData <- ChlData %>%  
+ChlData <- ChlData |>
+  filter(str_detect(CultureID, "SySl")) |>
   mutate(TurChl_ugL = as.numeric(Reading_rfu) * as.numeric(Chl_slope) + as.numeric(Chl_intercept)) %>% 
-  mutate(DATE = ymd(`DATE`)) %>% 
-  rename(SampleID=CultureID) %>% 
-  rename(ObsDate=DATE) %>% 
-  select(c(SampleID, ObsDate, TurChl_ugL, TIME)) %>% 
-  filter(TurChl_ugL<2500)  #outliers
-
-```
-
-# Prepare ObsTime_count to match with MC ToD data
-
-```{r}
-ChlData<-ChlData %>% 
-    filter(str_detect(SampleID, "SySl")) %>% 
-  mutate(TIME2 = as.POSIXct(strptime(TIME, format = "%H%M%S")),
-         ToD = format(TIME2, "%H")) %>% 
-  select(-c(TIME2)) %>% 
-  mutate(ToD=as.double(ToD))
-```
-
-# Calculate Chl mean from 3 technical replica
-
-```{r, warning = FALSE}
-ChlData <- ChlData %>%
-  group_by(SampleID, ObsDate) %>%
-  summarize(SampleID, ObsDate, TurChl_ugL, TIME, ToD,
-            meanTurChl_ugL = mean(TurChl_ugL),
-            sdTurChl_ugL = sd(TurChl_ugL)) %>%
+  filter(TurChl_ugL < 2500) |> #outliers
+   mutate(DATE = ymd(DATE)) |>
+  # mutate(ToD = format(strptime(TIME, format = "%H%M%S"), "%H")) |> difficulty extracting 'hour' from 'TIME'
+  mutate(ToD = as.numeric(substr(TIME, start = 1, stop = 2))) |> #will fail if there are times before 12:00:00
+  rename(SampleID = CultureID) %>% 
+  rename(ObsDate = DATE) %>% 
+  select(c(SampleID, ObsDate, TurChl_ugL, TIME, ToD)) |>
+  group_by(SampleID, ObsDate, TIME, ToD) |>
+  summarize(meanTurChl_ugL = mean(TurChl_ugL, na.rm = TRUE)) |>
   ungroup()
-```
-
-# Merge ChlData with CultureCatalog
-
-```{r, warning = FALSE, echo=FALSE}
-ChlDataMeta <- CultureCatalog %>%
-  full_join(., ChlData, by = c("SampleID" = "SampleID")) 
-
-ChlDataMeta <- ChlDataMeta %>%
-group_by(SampleID) %>%
-  arrange(ObsDate) %>%
-  mutate(E_days = as.numeric((ObsDate - ExpDate[1]))) %>%
-ungroup() %>% 
-  mutate(Strain=case_when(Strain=="BA127R"~"PE-rich_127",
-         Strain=="BA48R"~"PE-rich_048",
-        Strain=="BA56G"~"PC-rich_056",
-         Strain=="BA77G"~"PC-rich_077")) %>% 
-  drop_na(E_days)  
 
 ```
 
+# Read MC OD Growth Curve Data
 
 # Merge Turner and MC OD (Growth Curve) data
 
