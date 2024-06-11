@@ -69,9 +69,9 @@ Need to import calibrations to convert OD720 to cell L-1 and OD680 to chl L-1
 #need to filter and summarize data to get single calibration for each SampleID...
 
 Processed_Solisense_LRC <- readRDS(file = file.path("..", "Data","CleanedData", "Processed_Solisense_LRC.Rds")) |>
-select(-c("data", "lrcplatt_Model","lrcplatt_Predict", "lrcplatt_Glance")) |>
+select(-c("data")) |>
   filter(Ex_WL == 445) |> #temporary hack; later do spectrally weighted estimates
-  unnest(lrcplatt_Param) |>
+  unnest(GRCplatt_Param) |>
   select(-c("std.error", "statistic", "p.value")) |>
   pivot_wider(names_from = c( term, Ex_WL,), values_from = c(estimate)) |>
   filter(E_days < 8,
