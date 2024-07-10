@@ -13,8 +13,24 @@ editor_options:
 ---
 # Introduction
 
-# This Rmd loads previously imported, tidied data from the PSI MC and generates estimates of hourly and diel cumulative photon dose to cultures.  It imports Chl, Cell, light response equations and calibrations for JVPSII to estimate time resolved JVPSII per cell and per chl..
+# This exploratory Rmd loads previously imported, tidied data from the PSI MC and generates estimates of hourly and diel cumulative photon dose to cultures. This can be run for any PSI MC data file.
+  
+# IF AVAILABLE it imports Chl, Cell, light response equations and calibrations for JVPSII, IF AVAILABLE, to estimate time resolved JVPSII per cell and per chl..
+# These calibrations are not fully available for Prochlorococcus.
 
+# It then explores plots of hourly time resolved growth rates, vs. hourly cumulative photon dose, and hourly JVPSII if available
+
+# It is too long.
+
+# We have only limited JVPSII data with little to know intra-diel resolution of any changes in the JVPSII vs. light response curves;  if morning JVPSII is, as likely, different from afternoon JVPSII, we would not capture this.
+# Sylwia has some intra-diel time resolved OLIS & JVPSII data every 2 hours; 2 light levels; 1 photoperiod; 2 strains?  measurements taken when steps biggest...
+
+# Where necessary reset ToD to CultureToD with 0 at middle of scotoperiod and 12 at middle of photoperiod;  Sylwia different than Mireille sometimes;  Sylwia 13:00 is 'noon'
+
+# Doug fix ToD where needed
+# Doug check issue where JVPSII vs. ToD does not match PAR vs ToD; surprising
+  Is it worth messing with JVPSII for data sets in which we do not have intraday JVPSII resolution.   JVPSII is a slightly saturating transform of PAR; so plots are similar to PAR
+  
 # Set Options
 
 ## Set Chunk Options
@@ -230,20 +246,6 @@ MCDataHour |>
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 
-
-MCDataHour |>
-  filter(Run == 39) %>% 
-  filter(time >= 24) |>
-  filter(time <= 96) |>
-  #filter(Actinic_par > 1) |>
-  ggplot() +
-  geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
-  geom_line(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
-  scale_color_gradient(low = "black", high = "yellow") +
-  geom_smooth(aes(x = ToD, y = mu_Averh)) +
-  facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
 ```
 
 
@@ -255,10 +257,10 @@ MCDataHour |>
 #worried about unit conversions here!
 MCDataHour2 <- MCDataHour |>
   filter(SampleID %in% intersect(unique(Processed_Solisense_LRC$SampleID), unique(MCDataHour$SampleID))) |> #hack to match JVPSII LRC estimators to available files
-  left_join(Processed_Solisense_LRC, by = c("SampleID")) |> mutate(JVPSII_umoleLh = 3600 * (Pmax_445 *  (1 - exp((-a_445*Actinic_umolphotonsm2h/3600)/(Pmax_445)) * exp(-b_445*Actinic_umolphotonsm2h/3600/(Pmax_445))
-                                                                                                         )
-                                                                                            )
-                                                                   )
+  left_join(Processed_Solisense_LRC, by = c("SampleID")) |> mutate(JVPSII_umoleLh = 3600 * (Pmax_445 *  (1 - exp((-a_445*Actinic_umolphotonsm2h/3600)/(Pmax_445)) * exp(-b_445*Actinic_umolphotonsm2h/3600/(Pmax_445))                                                                                             )                                                                                           )
+)
+
+#FIX THIS PROPERLY: it is a quick hack
 
 # lrcplatt <- function(I, a, b, Pmax){Pmax * (1-exp(-a*I/Pmax)) * exp(-b*I/Pmax)}
 # 
@@ -317,7 +319,12 @@ MCDataHour2 |>
   geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour =  JVPSII_umoleLh)) +
   #facet_grid(cols = vars(Tube)) +
   theme_bw()
+
+
 ```
+Some JVPSII vs. ToD (tube 4) look surprising?   What is happening?
+
+
 
 ------------------------------# Support Vector regression---------------------------------------------------
 
