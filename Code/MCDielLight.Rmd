@@ -165,12 +165,11 @@ MCData |>
 
 #https://stackoverflow.com/questions/76603287/calculate-linear-regression-slope-with-moving-window
 
-rollapply and rollmean not behaving as expecting.
-Seeking rolling window with width of 12 rows; 5 min per row, 60 min window, outputs do not match expectations.
+
+Seeking rolling window with width of 12 rows; 5 min per row, 60 min window;
 -why is rollapply NA for first 5 rows; why not 12 rows?;
 -why are mu not as expected from manual?
   Solved with align = "right" and align = "left"
-Still working on verifying cumulative photons h-1 and d-1; Verified.
 
 ```{r growth rates}
 
@@ -192,6 +191,8 @@ MCDataHour <- MCDataAll |>
 filter(time - round(time) == 0) #crude collapse to 1 measurement per hour
 
 ```
+
+
 
 ```{r preliminary plot}
 MCDataHour |>
