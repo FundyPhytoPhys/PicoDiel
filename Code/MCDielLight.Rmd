@@ -162,19 +162,6 @@ MCData |>
   theme_bw()
 ```
 
-```{r}
-MCDataAlltest <- MCDataAll %>% 
-  mutate(DielTime = case_when(PrimaryOperator == "Sylwia" ~ ToD - 1,
-                              PrimaryOperator == "Mireille" ~ ToD)) %>% 
-  mutate(LightPhase = case_when(Actinic_par <= 0.5 ~ "Dark",
-                                Actinic_par > 0 & DielTime <= 12 ~ "Prenoon",
-                                Actinic_par > 0 & DielTime > 12 ~ "Postnoon"))
-```
-
-
-
-
-
 #https://stackoverflow.com/questions/76603287/calculate-linear-regression-slope-with-moving-window
 
 
