@@ -100,10 +100,10 @@ select(-c("data")) |>
 ## Read Data
 Check with Sylwia & Mireille about what filter(s) have been applied in 'Process' Consider using 'Process' before this step
 ```{r data files}
-MCFilesSySl <- list.files(path = file.path("..", "Data", "ImportedData", "ImportedMCData","SySl"), full.names = TRUE)
+MCFilesSySl <- list.files(path = file.path("..", "Data", "ImportedData", "ImportMCDataCombined","SySl"), full.names = TRUE)
 MCFilesSySl
 
-MCFilesMiSa <- list.files(path = file.path("..", "Data", "ImportedData", "ImportedMCData","MiSa"), full.names = TRUE)
+MCFilesMiSa <- list.files(path = file.path("..", "Data", "ImportedData", "ImportMCDataCombined","MiSa"), full.names = TRUE)
 MCFilesMiSa
 ```
 
@@ -176,7 +176,7 @@ MCDataAll |>
   theme_bw()
 ```
 
-```{r}
+```{r, add dieltime and light phase}
 MCDataAll <- MCDataAll %>% 
   mutate(DielTime = case_when(PrimaryOperator == "Sylwia" ~ ToD - 1,
                               PrimaryOperator == "Mireille" ~ ToD)) %>% 
