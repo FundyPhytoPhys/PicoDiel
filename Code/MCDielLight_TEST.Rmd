@@ -100,75 +100,89 @@ select(-c("data")) |>
 ## Read Data
 Check with Sylwia & Mireille about what filter(s) have been applied in 'Process' Consider using 'Process' before this step
 ```{r data files}
-MCFiles <- list.files(path = file.path("..", "Data", "ImportedData", "ImportedMCData"), full.names = TRUE)
-MCFiles
+MCFilesSySl <- list.files(path = file.path("..", "Data", "ImportedData", "ImportedMCData","SySl"), full.names = TRUE)
+MCFilesSySl
+
+MCFilesMiSa <- list.files(path = file.path("..", "Data", "ImportedData", "ImportedMCData","MiSa"), full.names = TRUE)
+MCFilesMiSa
 ```
 
 ```{r read data}
 
-MCData <- readRDS(file = MCFiles[1]) |>
+
+MCDataSySl <-  map_df(MCFilesSySl, readRDS) |>
   ungroup() |>
   mutate(deltaOD = OD680 - OD720) |>
   filter(OD720 >= 0)
 
-  colnames(MCData)
-  
-MCDataAll <- map_df(MCFiles, readRDS) |>
+MCDataMiSa <-  map_df(MCFilesMiSa, readRDS) |>
   ungroup() |>
   mutate(deltaOD = OD680 - OD720) |>
   filter(OD720 >= 0)
+
+MCDataMiSa$ExpStartTime<-gsub("1899-12-30 ","",as.character(MCDataMiSa$ExpStartTime))
+
+MCDataAll<-rbind(MCDataSySl,MCDataMiSa )
+
+  
+
 ```
 
 ```{r par_time_plot}
-MCData |>
+MCDataAll |>
   ggplot() +
   geom_point(aes(x = time, y = Actinic_par, colour = WL)) +
-  facet_grid(cols = vars(Tube)) +
+  facet_grid(cols = vars(Tube),
+             rows = vars(PrimaryOperator)) +
   theme_bw()
 
-MCData |>
+MCDataAll |>
   filter(time >= 48,
          time <= 72) |>
   ggplot() +
   geom_point(aes(x = time, y = Actinic_par, colour = WL)) +
-  facet_grid(cols = vars(Tube)) +
+  facet_grid(cols = vars(Tube),
+             rows = vars(PrimaryOperator)) +
   theme_bw()
 
-MCData |>
+MCDataAll |>
   filter(time >= 48,
          time <= 72) |>
   ggplot() +
   geom_point(aes(x = time, y = deltaOD, colour = WL)) +
-  facet_grid(cols = vars(Tube)) +
+  facet_grid(cols = vars(Tube),
+             rows = vars(PrimaryOperator)) +
   theme_bw()
 
-MCData |>
+MCDataAll |>
   filter(time >= 48,
          time <= 72) |>
   ggplot() +
   geom_point(aes(x = time, y = Actinic_par)) +
   geom_point(aes(x = time, y = 1000 * deltaOD, colour = WL)) +
-  facet_grid(cols = vars(Tube)) +
+  facet_grid(cols = vars(Tube),
+             rows = vars(PrimaryOperator)) +
   theme_bw()
 
-MCData |>
+MCDataAll |>
   filter(Tube == 4) |>
   # filter(time >= 48,
   #        time <= 72) |>
   ggplot() +
   geom_point(aes(x = time, y = Actinic_par)) +
   geom_point(aes(x = time, y = 1000 * deltaOD, colour = WL)) +
-  facet_grid(cols = vars(Tube)) +
+  facet_grid(cols = vars(Tube),
+             rows = vars(PrimaryOperator)) +
   theme_bw()
 ```
 
 ```{r}
-MCDataAlltest <- MCDataAll %>% 
+MCDataAll <- MCDataAll %>% 
   mutate(DielTime = case_when(PrimaryOperator == "Sylwia" ~ ToD - 1,
                               PrimaryOperator == "Mireille" ~ ToD)) %>% 
   mutate(LightPhase = case_when(Actinic_par <= 0.5 ~ "Dark",
                                 Actinic_par > 0 & DielTime <= 12 ~ "Prenoon",
-                                Actinic_par > 0 & DielTime > 12 ~ "Postnoon"))
+                                Actinic_par > 0 & DielTime > 12 ~ "Postnoon")) 
 ```
 
 
@@ -208,16 +222,35 @@ filter(time - round(time) == 0) #crude collapse to 1 measurement per hour
 
 ```{r preliminary plot}
 MCDataHour |>
-  filter(Run == 39) %>% 
+ # filter(Run == 39) %>% 
   filter(time >= 24) |>
   #        time <= 72) |>
   #filter(time < 100) |>
   ggplot() +
   geom_point(aes(x = time, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
   geom_point(aes(x = time, y = OD720), colour = "green") +
-  facet_grid(cols = vars(Tube), rows = vars(Filename)) +
+  facet_grid(cols = vars(Tube, Par_ue), rows = vars(PrimaryOperator, LightPhase)) +
   theme_bw()
 
+
+MCDataHour |>
+  #filter(Run == 39) %>% 
+  filter(time >= 24) |>
+  #        time <= 72) |>
+  #filter(time < 100) |>
+  ggplot() +
+  geom_point(aes(x = time, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
+  # geom_point(aes(x = time, y = OD720), colour = "green") +
+  facet_grid(cols = vars(Par_ue), rows = vars(PrimaryOperator, LightPhase)) +
+  theme_bw()
+
+```
+```{r}
+
+MCDataHour<- MCDataHour %>% 
+  filter(PrimaryOperator!= "Sarah") %>% 
+  filter(Par_ue != 900 &Par_ue != 600) %>% 
+  filter(Photoperiod != 24)
 ```
 
 
@@ -228,36 +261,62 @@ MCDataHour |>
 
 
 MCDataHour |>
-    filter(Run == 39) %>% 
+    #filter(Run == 39) %>% 
     filter(time >= 24) |>
    filter(time <= 96) |>
   ggplot() +
   geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
   scale_color_gradient(low = "black", high = "yellow") +
-  facet_grid(cols = vars(Tube)) +
+ facet_grid(cols = vars( Par_ue), rows = vars(PrimaryOperator)) +
   theme_bw()
 
 MCDataHour |>
-    filter(Run == 39) %>% 
-    filter(time >= 24) |>
-   filter(time <= 96) |>
-  ggplot() +
-  geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
-  geom_line(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
-  scale_color_gradient(low = "black", high = "yellow") +
-  facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
-MCDataHour |>
-    filter(Run == 39) %>% 
-  filter(Tube == 4) |>
+  #  filter(Run == 39) %>% 
+  #filter(Tube == 4) |>
   filter(time >= 24) |>
   filter(time <= 96) |>
   ggplot() +
   geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
   scale_color_gradient(low = "black", high = "yellow") +
-  facet_grid(cols = vars(Tube)) +
+   facet_grid(cols = vars( Par_ue), rows = vars(PrimaryOperator)) +
   theme_bw()
+
+MCDataHour |>
+  # filter(Run == 39) %>% 
+    filter(time >= 24) |>
+   filter(time <= 96) |>
+  ggplot() +
+  geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = LightPhase)) +
+  #geom_line(aes(x = ToD, y = mu_Averh, colour = LightPhase)) +
+  #scale_color_gradient(low = "black", high = "yellow") +
+ facet_grid(cols = vars(Photoperiod), rows = vars(PrimaryOperator, WL)) +
+  theme_bw()
+
+
+MCDataHour |>
+  # filter(Run == 39) %>% 
+    filter(time >= 24) |>
+   filter(time <= 96) |>
+  ggplot() +
+  geom_point(aes(x = ToD, y = mu_Averh, colour = as.factor(LightPhase))) +
+#  geom_line(aes(x = time, y = mu_Averh, colour = LightPhase)) +
+  #scale_color_gradient(low = "black", high = "yellow") +
+ facet_grid(cols = vars(Photoperiod), rows = vars(PrimaryOperator, WL)) +
+  theme_bw()
+
+
+MCDataHour |>
+  filter(LightPhase!= "Dark",
+         PrimaryOperator == "Sylwia") %>% 
+    filter(time >= 24) |>
+   filter(time <= 96) |>
+  ggplot() +
+  geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = as.factor(LightPhase))) +
+#  geom_line(aes(x = time, y = mu_Averh, colour = LightPhase)) +
+  #scale_color_gradient(low = "black", high = "yellow") +
+ facet_grid(cols = vars(Photoperiod), rows = vars(PrimaryOperator, WL)) +
+  theme_bw()
+
 
 ```
 
