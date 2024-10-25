@@ -41,11 +41,13 @@ knitr::opts_chunk$set(fig.path='Figs/')
 ```
 
 ```{r libraries}
-library(tidyverse)
 library(zoo)
+library(tidyverse)
+library(purrr)
 
-library(e1071)
-library(gcookbook)  # Load gcookbook for the uspopage data set
+# library(dplyr)
+# library(e1071)
+# library(gcookbook)  # Load gcookbook for the uspopage data set
 #library(viridis)  # Load viridis for the viridis palette
 library("RColorBrewer")
 ```
@@ -56,9 +58,12 @@ library("RColorBrewer")
 # names(Bin4Colours) <- Bin4_nm
 ```
 
+
 ```{r set project variables}
 Project <- "PicoDiel"
+DataIn <- file.path("..", "Data", "CleanedData", "CleanedMCData")
 DataOut <- file.path("..", "Data", "ProcessedData", "ProcessedMCDielLightData")
+
 
 FigPath <- file.path("..", "Output", "Figures")
 FigRdsPath <- file.path("..", "Output", "FiguresRds")
@@ -70,94 +75,77 @@ TableRdsPath <- file.path("..", "Output", "TablesRDS")
 ```{r chl and cell calibrations}
 # ChlCellCalib <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedCrossCalibrationData", "PicoDiel_Imported_CrossCalibrationData.Rds"))
 
-test <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedCrossCalibrationData", "PicoDiel_Tab_MDPicoMCODCorrelation.Rds"))
-```
-
-
-
-## JVPSII light response and calibrations
-Think about how to calibrate JVPSII; what does it mean?  Use e cell-1 s-1?
-Need to import calibrations to convert OD720 to cell L-1 and OD680 to chl L-1
-```{r jvpsii}
-
-#JVPSII_eLs_ModelTerms <- readRDS(file = file.path("..", "Data","CleanedData", "JVPSII_eLs_ModelTerms.Rds"))
-
-#need to filter and summarize data to get single calibration for each SampleID...
-
-Processed_Solisense_LRC <- readRDS(file = file.path("..", "Data","CleanedData", "Processed_Solisense_LRC.Rds")) |>
-select(-c("data")) |>
-  filter(Ex_WL == 445) |> #temporary hack; later do spectrally weighted estimates
-  unnest(GRCplatt_Param) |>
-  select(-c("std.error", "statistic", "p.value")) |>
-  pivot_wider(names_from = c( term, Ex_WL,), values_from = c(estimate)) |>
-  filter(E_days < 8,
-         E_days > 2) |>
-  group_by(SampleID) |>
-  summarize(across(`a_445`:`Pmax_445`, mean))  # hack temporary fix to collapse duplicated LRC parameters for the same SampleID
+# test <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedCrossCalibrationData", "PicoDiel_Tab_MDPicoMCODCorrelation.Rds"))
 ```
 
 
 ## Read Data
 Check with Sylwia & Mireille about what filter(s) have been applied in 'Process' Consider using 'Process' before this step
 ```{r data files}
-MCFiles <- list.files(path = file.path("..", "Data", "ImportedData", "ImportedMCData"), full.names = TRUE)
+MCFiles <- list.files(path = file.path(DataIn), full.names = TRUE)
 MCFiles
 ```
 
-```{r read data}
+```{r read data and select relevant columns}
 
-MCData <- readRDS(file = MCFiles[1]) |>
-  ungroup() |>
-  mutate(deltaOD = OD680 - OD720) |>
-  filter(OD720 >= 0)
+MCData <- readRDS(file = MCFiles[2])
 
-  colnames(MCData)
-  
-MCDataAll <- map_df(MCFiles, readRDS) |>
-  ungroup() |>
-  mutate(deltaOD = OD680 - OD720) |>
-  filter(OD720 >= 0)
+glimpse(MCData)
+
+MCData <- MCData %>% 
+  select(c(Strain,WL, SampleID, Run, Par_ue, Pur_ue, ObsDate, E_days, PurData, PurParRatio, PARPhotonDose_day, PURPhotonDose_day, Filename, Tube, ExpDate, MC, PrimaryOperator, Photoperiod, ExpEndHour, O2_uM, tubedata, OD720_logistic_predict, deltaOD_logistic_predict, OD720_Lmu_corr, deltaOD_Lmu_corr))
+
 ```
 
 ```{r par_time_plot}
 MCData |>
+  filter(Run == 114) |>
+  unnest(cols = c(tubedata, deltaOD_logistic_predict),names_sep = "_", keep_empty = TRUE) |>
   ggplot() +
-  geom_point(aes(x = time, y = Actinic_par, colour = WL)) +
+  geom_point(aes(x = tubedata_time, y = tubedata_Actinic_par, colour = WL)) +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 
 MCData |>
-  filter(time >= 48,
-         time <= 72) |>
+  filter(Run == 114) |>
+  unnest(cols = c(tubedata, deltaOD_logistic_predict),names_sep = "_", keep_empty = TRUE) |>
+  filter(tubedata_time >= 48,
+         tubedata_time <= 72) |>
   ggplot() +
-  geom_point(aes(x = time, y = Actinic_par, colour = WL)) +
+  geom_point(aes(x = tubedata_time, y = tubedata_Actinic_par, colour = WL)) +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 
 MCData |>
-  filter(time >= 48,
-         time <= 72) |>
+ filter(Run == 114) |>
+  unnest(cols = c(tubedata, deltaOD_logistic_predict),names_sep = "_", keep_empty = TRUE) |>
+  filter(tubedata_time >= 48,
+         tubedata_time <= 72) |>
   ggplot() +
-  geom_point(aes(x = time, y = deltaOD, colour = WL)) +
+  geom_point(aes(x = tubedata_time, y = tubedata_deltaOD, colour = WL)) +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 
 MCData |>
-  filter(time >= 48,
-         time <= 72) |>
+ filter(Run == 114) |>
+  unnest(cols = c(tubedata, deltaOD_logistic_predict),names_sep = "_", keep_empty = TRUE) |>
+  filter(tubedata_time >= 48,
+         tubedata_time <= 72) |>
   ggplot() +
-  geom_point(aes(x = time, y = Actinic_par)) +
-  geom_point(aes(x = time, y = 1000 * deltaOD, colour = WL)) +
+  geom_point(aes(x = tubedata_time, y = tubedata_Actinic_par)) +
+  geom_point(aes(x = tubedata_time, y = 1000 * tubedata_deltaOD, colour = WL)) +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 
 MCData |>
-  filter(Tube == 4) |>
-  # filter(time >= 48,
-  #        time <= 72) |>
+  filter(Run == 114) |>
+  unnest(cols = c(tubedata, deltaOD_logistic_predict),names_sep = "_", keep_empty = TRUE) |>
+  # filter(tubedata_time >= 48,
+  #        tubedata_time <= 72) |>
+  filter(Tube == 3) |>
   ggplot() +
-  geom_point(aes(x = time, y = Actinic_par)) +
-  geom_point(aes(x = time, y = 1000 * deltaOD, colour = WL)) +
+  geom_point(aes(x = tubedata_time, y = tubedata_Actinic_par)) +
+  geom_point(aes(x = tubedata_time, y = 10000 * tubedata_deltaOD, colour = WL)) +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 ```
@@ -182,12 +170,25 @@ slope <- function(x) cov(x[, 1], x[, 2]) / var(x[, 1])
 
 ODinterval <- 5
 
-DielLightGrowthPro <- MCDataAll |>
-  group_by(Filename, Tube) |>
+# DielLightGrowthPro <- MCData |>
+#   filter(Run == 114) |>
+#   group_by(Filename, Tube) |>
+#    mutate(Actinic_umolphotonsm2h = zoo::rollsum(tubedata_Actinic_par * 60 * ODinterval , k = 60/ODinterval, fill = NA, align = "right")) |> #PAR per h
+#   mutate(mu_OD720window = zoo::rollapply(cbind(time, log(OD720)), width = 60/ODinterval, FUN = slope, by.column=FALSE, fill=NA, align = "right")) |> #slope
+#   mutate(mu_Averh = zoo::rollmean(mu_OD720window, k = 60/ODinterval, fill = NA, align = "left")) |> #average of first 12 row  ungroup() 
+# filter(time - round(time) == 0) #crude collapse to 1 measurement per hour
+
+DielLightGrowthPro <- MCData |>
+  # filter(Run == 114) |>
+  unnest(cols = c(tubedata)) |>
+   group_by(Filename, Tube) |>
    mutate(Actinic_umolphotonsm2h = zoo::rollsum(Actinic_par * 60 * ODinterval , k = 60/ODinterval, fill = NA, align = "right")) |> #PAR per h
   mutate(mu_OD720window = zoo::rollapply(cbind(time, log(OD720)), width = 60/ODinterval, FUN = slope, by.column=FALSE, fill=NA, align = "right")) |> #slope
   mutate(mu_Averh = zoo::rollmean(mu_OD720window, k = 60/ODinterval, fill = NA, align = "left")) |> #average of first 12 row  ungroup() 
-filter(time - round(time) == 0) #crude collapse to 1 measurement per hour
+filter(time - round(time) == 0) |> #crude collapse to 1 measurement per hour
+nest(tubedata = c(time, ToD, Day, Actinic_par, OD680, OD720, deltaOD, ActinicMid_parOD720,
+                  ActinicMid_dayOD720,rollmeanOD720,rollmeandeltaOD,lognormOD720, lognormdeltaOD, LagSeedOD720, LagSeeddeltaOD,Actinic_umolphotonsm2h, mu_OD720window, mu_Averh))
+
 
 ```
 
@@ -195,13 +196,14 @@ filter(time - round(time) == 0) #crude collapse to 1 measurement per hour
 
 ```{r preliminary plot}
 DielLightGrowthPro |>
-  filter(Run == 39) %>% 
-  filter(time >= 24) |>
+  filter(Run == 114) %>% 
+   unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
+  filter(tubedata_time >= 24) |>
   #        time <= 72) |>
   #filter(time < 100) |>
   ggplot() +
-  geom_point(aes(x = time, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
-  geom_point(aes(x = time, y = OD720), colour = "green") +
+  geom_point(aes(x = tubedata_time, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h)) +
+  geom_point(aes(x = tubedata_time, y = tubedata_OD720), colour = "green") +
   facet_grid(cols = vars(Tube), rows = vars(Filename)) +
   theme_bw()
 
@@ -214,34 +216,37 @@ DielLightGrowthPro |>
 #bad to filter and only then estimate growth rates; better to do across 1 h window
 
 
-DielLightGrowthPro |>
-    filter(Run == 39) %>% 
-    filter(time >= 24) |>
-   filter(time <= 96) |>
+DielLightGrowthPro |> 
+  filter(Run == 114) %>% 
+   unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
+  filter(tubedata_time >= 24) |>
+   filter(tubedata_time <= 96) |>
   ggplot() +
-  geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
+  geom_point(aes(x = tubedata_Actinic_umolphotonsm2h, y = tubedata_mu_Averh, colour = tubedata_ToD)) +
   scale_color_gradient(low = "black", high = "yellow") +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 
 DielLightGrowthPro |>
-    filter(Run == 39) %>% 
-    filter(time >= 24) |>
-   filter(time <= 96) |>
+    filter(Run == 114) %>% 
+   unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
+  filter(tubedata_time >= 24) |>
+   filter(tubedata_time <= 96) |>
   ggplot() +
-  geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
-  geom_line(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
+  geom_point(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h)) +
+  geom_line(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h)) +
   scale_color_gradient(low = "black", high = "yellow") +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 
 DielLightGrowthPro |>
-    filter(Run == 39) %>% 
-  filter(Tube == 4) |>
-  filter(time >= 24) |>
-  filter(time <= 96) |>
+    filter(Run == 114) %>% 
+   unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
+  filter(tubedata_time >= 24) |>
+   filter(tubedata_time <= 96) |>
+  filter(Tube == 3) |>
   ggplot() +
-  geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
+  geom_point(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h)) +
   scale_color_gradient(low = "black", high = "yellow") +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
