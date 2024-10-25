@@ -1,0 +1,101 @@
+---
+title: "DielLightGrowthPeaks"
+author:
+- Douglas A. Campbell
+- Sylwia Wilczewska-Wilinska
+- Mireille Savoie
+date: "`r format(Sys.Date())`"
+bibliography: Prochlorococcus_O2_NPQ.bib
+csl: plos-one.csl
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+# Introduction - skeleton
+
+# This exploratory Rmd loads estimates of hourly and diel cumulative photon dose to cultures generated from PSI MC data file.
+
+# It plots temporal peaks of growth rates vs. peaks of PAR and ToD to detect shifts in timing with growth conditions & strain.
+
+  
+# Set Options
+
+## Set Chunk Options
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+knitr::opts_chunk$set(fig.path='Figs/')
+```
+
+```{r libraries}
+library(tidyverse)
+library(zoo)
+
+library(e1071)
+library(gcookbook)  # Load gcookbook for the uspopage data set
+#library(viridis)  # Load viridis for the viridis palette
+library("RColorBrewer")
+```
+
+```{r colour setting}
+# Bin4_nm <- c(440, 510, 590, 660)
+# Bin4Colours <- c(w_length2rgb(440), w_length2rgb(510), w_length2rgb(590), w_length2rgb(660))
+# names(Bin4Colours) <- Bin4_nm
+```
+
+```{r set project variables}
+Project <- "PicoDiel"
+DataOut <- file.path("..", "Data", "ProcessedData", "ProcessedMCDielLightData")
+
+FigPath <- file.path("..", "Output", "Figures")
+FigRdsPath <- file.path("..", "Output", "FiguresRds")
+TableRdsPath <- file.path("..", "Output", "TablesRDS")
+```
+
+
+
+## Read Data
+
+
+```{r read data}
+
+```
+
+# Exploratory Plots from representative data file
+```{r par_time_plot}
+MCData |>
+  ggplot() +
+  geom_point(aes(x = time, y = Actinic_par, colour = WL)) +
+  facet_grid(cols = vars(Tube)) +
+  theme_bw()
+
+
+```
+
+
+
+
+```{r preliminary plot}
+DielLightGrowth |>
+  filter(Run == 39) %>% 
+  filter(time >= 24) |>
+  #        time <= 72) |>
+  #filter(time < 100) |>
+  ggplot() +
+  geom_point(aes(x = time, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
+  geom_point(aes(x = time, y = OD720), colour = "green") +
+  facet_grid(cols = vars(Tube), rows = vars(Filename)) +
+  theme_bw()
+
+```
+
+
+
+```{r save hourly growth peaks}
+# add code with 'paste' to generate custom name later
+
+# saveRDS(object = DielLightGrowth, file = file.path(DataOut, "DielLightGrowth.Rds"), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+
+```
+
+
