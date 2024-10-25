@@ -22,7 +22,7 @@ editor_options:
 
 # It is too long.
 
-# We have only limited JVPSII data with little to know intra-diel resolution of any changes in the JVPSII vs. light response curves;  if morning JVPSII is, as likely, different from afternoon JVPSII, we would not capture this.
+# We have only limited JVPSII data with little to no intra-diel resolution of any changes in the JVPSII vs. light response curves;  if morning JVPSII is, as likely, different from afternoon JVPSII, we would not capture this, as yet.
 # Sylwia has some intra-diel time resolved OLIS & JVPSII data every 2 hours; 2 light levels; 1 photoperiod; 2 strains?  measurements taken when steps biggest...
 
 # Where necessary reset ToD to CultureToD with 0 at middle of scotoperiod and 12 at middle of photoperiod;  Sylwia different than Mireille sometimes;  Sylwia 13:00 is 'noon'
@@ -245,6 +245,11 @@ MCDataHour |>
   scale_color_gradient(low = "black", high = "yellow") +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
+
+```
+
+```{r save hourly growth}
+
 
 ```
 
