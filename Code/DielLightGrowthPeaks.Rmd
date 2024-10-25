@@ -1,5 +1,5 @@
 ---
-title: "MCDielLight"
+title: "DielLightGrowthPeaks"
 author:
 - Douglas A. Campbell
 - Sylwia Wilczewska-Wilinska
@@ -52,36 +52,13 @@ FigRdsPath <- file.path("..", "Output", "FiguresRds")
 TableRdsPath <- file.path("..", "Output", "TablesRDS")
 ```
 
-## Chl and Cell calibrations
-
-```{r chl and cell calibrations}
-# ChlCellCalib <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedCrossCalibrationData", "PicoDiel_Imported_CrossCalibrationData.Rds"))
-
-test <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedCrossCalibrationData", "PicoDiel_Tab_MDPicoMCODCorrelation.Rds"))
-```
-
 
 
 ## Read Data
-Check with Sylwia & Mireille about what filter(s) have been applied in 'Process' Consider using 'Process' before this step
-```{r data files}
-MCFiles <- list.files(path = file.path("..", "Data", "ImportedData", "ImportedMCData"), full.names = TRUE)
-MCFiles
-```
+
 
 ```{r read data}
 
-MCData <- readRDS(file = MCFiles[1]) |>
-  ungroup() |>
-  mutate(deltaOD = OD680 - OD720) |>
-  filter(OD720 >= 0)
-
-  colnames(MCData)
-  
-MCDataAll <- map_df(MCFiles, readRDS) |>
-  ungroup() |>
-  mutate(deltaOD = OD680 - OD720) |>
-  filter(OD720 >= 0)
 ```
 
 # Exploratory Plots from representative data file
@@ -92,70 +69,9 @@ MCData |>
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 
-MCData |>
-  filter(time >= 48,
-         time <= 72) |>
-  ggplot() +
-  geom_point(aes(x = time, y = Actinic_par, colour = WL)) +
-  facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
-MCData |>
-  filter(time >= 48,
-         time <= 72) |>
-  ggplot() +
-  geom_point(aes(x = time, y = deltaOD, colour = WL)) +
-  facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
-MCData |>
-  filter(time >= 48,
-         time <= 72) |>
-  ggplot() +
-  geom_point(aes(x = time, y = Actinic_par)) +
-  geom_point(aes(x = time, y = 1000 * deltaOD, colour = WL)) +
-  facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
-MCData |>
-  filter(Tube == 4) |>
-  # filter(time >= 48,
-  #        time <= 72) |>
-  ggplot() +
-  geom_point(aes(x = time, y = Actinic_par)) +
-  geom_point(aes(x = time, y = 1000 * deltaOD, colour = WL)) +
-  facet_grid(cols = vars(Tube)) +
-  theme_bw()
-```
-
-#https://stackoverflow.com/questions/76603287/calculate-linear-regression-slope-with-moving-window
-
-
-Seeking rolling window with width of 12 rows; 5 min per row, 60 min window;
--why is rollapply NA for first 5 rows; why not 12 rows?;
--why are mu not as expected from manual?
-  Solved with align = "right" and align = "left"
-
-```{r growth rates}
-
-#slope <- function(x) coef(lm(x[, 2] ~ x[, 1]))[[2]] #same result, much slower
-slope <- function(x) cov(x[, 1], x[, 2]) / var(x[, 1])
-
-#FitWindow_h <- 2
-#maybe issues still with changes in light level that do not align with growth measurement points
-
-#maybe should estimate growth rates, then use 'summarize' to do sum of actinic photon dose for each hour?
-
-ODinterval <- 5
-
-DielLightGrowth <- MCDataAll |>
-  group_by(Filename, Tube) |>
-   mutate(Actinic_umolphotonsm2h = zoo::rollsum(Actinic_par * 60 * ODinterval , k = 60/ODinterval, fill = NA, align = "right")) |> #PAR per h
-  mutate(mu_OD720window = zoo::rollapply(cbind(time, log(OD720)), width = 60/ODinterval, FUN = slope, by.column=FALSE, fill=NA, align = "right")) |> #slope
-  mutate(mu_Averh = zoo::rollmean(mu_OD720window, k = 60/ODinterval, fill = NA, align = "left")) |> #average of first 12 row  ungroup() 
-filter(time - round(time) == 0) #crude collapse to 1 measurement per hour
 
 ```
+
 
 
 
@@ -174,50 +90,11 @@ DielLightGrowth |>
 ```
 
 
-```{r hourly plots exploration}
-#temporary
-#use case_when to remove 'dark' periods?
-#bad to filter and only then estimate growth rates; better to do across 1 h window
 
-#scale_color_gradient2 to have noon light, start and end of ToD dark
-DielLightGrowth |>
-    filter(Run == 39) %>% 
-    filter(time >= 24) |>
-   filter(time <= 96) |>
-  ggplot() +
-  geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
-  scale_color_gradient2(low = "black", mid = "yellow", high = "black", midpoint = 12) +
-  facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
-DielLightGrowth |>
-    filter(Run == 39) %>% 
-    filter(time >= 24) |>
-   filter(time <= 96) |>
-  ggplot() +
-  geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
-  geom_line(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
-  scale_color_gradient(low = "black", high = "yellow") +
-  facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
-DielLightGrowth |>
-    filter(Run == 39) %>% 
-  filter(Tube == 4) |>
-  filter(time >= 24) |>
-  filter(time <= 96) |>
-  ggplot() +
-  geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
-  scale_color_gradient(low = "black", high = "yellow") +
-  facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
-```
-
-```{r save hourly growth}
+```{r save hourly growth peaks}
 # add code with 'paste' to generate custom name later
 
-saveRDS(object = DielLightGrowth, file = file.path(DataOut, "DielLightGrowth.Rds"), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+# saveRDS(object = DielLightGrowth, file = file.path(DataOut, "DielLightGrowth.Rds"), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
 
 ```
 
