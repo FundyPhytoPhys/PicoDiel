@@ -14,22 +14,11 @@ editor_options:
 # Introduction
 
 # This exploratory Rmd loads previously imported, tidied data from the PSI MC and generates estimates of hourly and diel cumulative photon dose to cultures. This can be run for any PSI MC data file.
-  
-# IF AVAILABLE it imports Chl, Cell, light response equations and calibrations for JVPSII, IF AVAILABLE, to estimate time resolved JVPSII per cell and per chl..
-# These calibrations are not fully available for Prochlorococcus.
 
 # It then explores plots of hourly time resolved growth rates, vs. hourly cumulative photon dose, and hourly JVPSII if available
 
-# It is too long.
-
-# We have only limited JVPSII data with little to no intra-diel resolution of any changes in the JVPSII vs. light response curves;  if morning JVPSII is, as likely, different from afternoon JVPSII, we would not capture this, as yet.
-# Sylwia has some intra-diel time resolved OLIS & JVPSII data every 2 hours; 2 light levels; 1 photoperiod; 2 strains?  measurements taken when steps biggest...
-
 # Where necessary reset ToD to CultureToD with 0 at middle of scotoperiod and 12 at middle of photoperiod;  Sylwia different than Mireille sometimes;  Sylwia 13:00 is 'noon'
 
-# Doug fix ToD where needed
-# Doug check issue where JVPSII vs. ToD does not match PAR vs ToD; surprising
-  Is it worth messing with JVPSII for data sets in which we do not have intraday JVPSII resolution.   JVPSII is a slightly saturating transform of PAR; so plots are similar to PAR
   
 # Set Options
 
@@ -75,28 +64,6 @@ test <- readRDS(file = file.path("..", "Data", "ImportedData", "ImportedCrossCal
 
 
 
-## JVPSII light response and calibrations
-Think about how to calibrate JVPSII; what does it mean?  Use e cell-1 s-1?
-Need to import calibrations to convert OD720 to cell L-1 and OD680 to chl L-1
-```{r jvpsii}
-
-#JVPSII_eLs_ModelTerms <- readRDS(file = file.path("..", "Data","CleanedData", "JVPSII_eLs_ModelTerms.Rds"))
-
-#need to filter and summarize data to get single calibration for each SampleID...
-
-Processed_Solisense_LRC <- readRDS(file = file.path("..", "Data","CleanedData", "Processed_Solisense_LRC.Rds")) |>
-select(-c("data")) |>
-  filter(Ex_WL == 445) |> #temporary hack; later do spectrally weighted estimates
-  unnest(GRCplatt_Param) |>
-  select(-c("std.error", "statistic", "p.value")) |>
-  pivot_wider(names_from = c( term, Ex_WL,), values_from = c(estimate)) |>
-  filter(E_days < 8,
-         E_days > 2) |>
-  group_by(SampleID) |>
-  summarize(across(`a_445`:`Pmax_445`, mean))  # hack temporary fix to collapse duplicated LRC parameters for the same SampleID
-```
-
-
 ## Read Data
 Check with Sylwia & Mireille about what filter(s) have been applied in 'Process' Consider using 'Process' before this step
 ```{r data files}
@@ -119,6 +86,7 @@ MCDataAll <- map_df(MCFiles, readRDS) |>
   filter(OD720 >= 0)
 ```
 
+# Exploratory Plots from representative data file
 ```{r par_time_plot}
 MCData |>
   ggplot() +
@@ -182,7 +150,7 @@ slope <- function(x) cov(x[, 1], x[, 2]) / var(x[, 1])
 
 ODinterval <- 5
 
-MCDataHour <- MCDataAll |>
+DielLightGrowth <- MCDataAll |>
   group_by(Filename, Tube) |>
    mutate(Actinic_umolphotonsm2h = zoo::rollsum(Actinic_par * 60 * ODinterval , k = 60/ODinterval, fill = NA, align = "right")) |> #PAR per h
   mutate(mu_OD720window = zoo::rollapply(cbind(time, log(OD720)), width = 60/ODinterval, FUN = slope, by.column=FALSE, fill=NA, align = "right")) |> #slope
@@ -194,7 +162,7 @@ filter(time - round(time) == 0) #crude collapse to 1 measurement per hour
 
 
 ```{r preliminary plot}
-MCDataHour |>
+DielLightGrowth |>
   filter(Run == 39) %>% 
   filter(time >= 24) |>
   #        time <= 72) |>
@@ -213,18 +181,18 @@ MCDataHour |>
 #use case_when to remove 'dark' periods?
 #bad to filter and only then estimate growth rates; better to do across 1 h window
 
-
-MCDataHour |>
+#scale_color_gradient2 to have noon light, start and end of ToD dark
+DielLightGrowth |>
     filter(Run == 39) %>% 
     filter(time >= 24) |>
    filter(time <= 96) |>
   ggplot() +
   geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
-  scale_color_gradient(low = "black", high = "yellow") +
+  scale_color_gradient2(low = "black", mid = "yellow", high = "black", midpoint = 12) +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 
-MCDataHour |>
+DielLightGrowth |>
     filter(Run == 39) %>% 
     filter(time >= 24) |>
    filter(time <= 96) |>
@@ -235,7 +203,7 @@ MCDataHour |>
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 
-MCDataHour |>
+DielLightGrowth |>
     filter(Run == 39) %>% 
   filter(Tube == 4) |>
   filter(time >= 24) |>
@@ -249,598 +217,10 @@ MCDataHour |>
 ```
 
 ```{r save hourly growth}
+# add code with 'paste' to generate custom name later
 
-
-```
-
-
-# JVPSII exploration
-# Need to import JVPSII e cell-1 s-1 or e- chl-1 s-1 instead of e L-1 s-1 for generalization
-```{r jvpsii eLs 445}
-#lrcplatt <- function(I, a, b, Pmax){Pmax * (1-exp(-a*I/Pmax)) * exp(-b*I/Pmax)}
-
-#worried about unit conversions here!
-MCDataHour2 <- MCDataHour |>
-  filter(SampleID %in% intersect(unique(Processed_Solisense_LRC$SampleID), unique(MCDataHour$SampleID))) |> #hack to match JVPSII LRC estimators to available files
-  left_join(Processed_Solisense_LRC, by = c("SampleID")) |> mutate(JVPSII_umoleLh = 3600 * (Pmax_445 *  (1 - exp((-a_445*Actinic_umolphotonsm2h/3600)/(Pmax_445)) * exp(-b_445*Actinic_umolphotonsm2h/3600/(Pmax_445))                                                                                             )                                                                                           )
-)
-
-#FIX THIS PROPERLY: it is a quick hack
-
-# lrcplatt <- function(I, a, b, Pmax){Pmax * (1-exp(-a*I/Pmax)) * exp(-b*I/Pmax)}
-# 
-# 
-# SolFitsMetaLRC <- SolFitsMeta %>%
-#   nest(data = -c("SampleID", "Run", "Strain" ,"ExpDate","Par_ue", "Photoperiod", "O2", "WL", "MC", "Tube","Ex_WL","LightShape", "ExpEndDate", "PARPhotonDose_day", "ObsDate", "E_days")) %>% #head(50) %>% 
-#   mutate(lrcplatt_Model = map(data, possibly(~nlsLM(JVPSII_umol_eLs ~ lrcplatt(I = ActPARCorr, a, b, Pmax),
-```
-
-
-```{r explore jvpsii}
-MCDataHour2 |>
-  filter(Run == 39) |>
-  filter(time >= 24) |>
-  filter(time <= 96) |>
-  #filter(Tube == 4) |>
-  ggplot() +
-  # geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
-  # scale_color_gradient(low = "black", high = "yellow") +
-  geom_point(aes(x = Actinic_umolphotonsm2h, y = JVPSII_umoleLh, colour = ToD)) +
-  facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
-MCDataHour2 |>
-  filter(Run == 39) |>
-  filter(time >= 24) |>
-  filter(time <= 96) |>
-  #filter(Tube == 4) |>
-  ggplot() +
-  # geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
-  # scale_color_gradient(low = "black", high = "yellow") +
-  geom_point(aes(x = ToD, y = JVPSII_umoleLh, colour = Actinic_umolphotonsm2h)) +
-  facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
-MCDataHour2 |>
-  filter(Run == 39) |>
-  filter(time >= 24) |>
-  filter(time <= 96) |>
-  #filter(Tube == 4) |>
-  ggplot() +
-  # geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
-  # scale_color_gradient(low = "black", high = "yellow") +
-  geom_point(aes(x = JVPSII_umoleLh, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
-  #facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
-MCDataHour2 |>
-  filter(Run == 39) |>
-  filter(time >= 24) |>
-  filter(time <= 96) |>
-  #filter(Tube == 4) |>
-  ggplot() +
-  # geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
-  # scale_color_gradient(low = "black", high = "yellow") +
-  geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour =  JVPSII_umoleLh)) +
-  #facet_grid(cols = vars(Tube)) +
-  theme_bw()
-
+saveRDS(object = DielLightGrowth, file = file.path(DataOut, "DielLightGrowth.Rds"), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
 
 ```
-Some JVPSII vs. ToD (tube 4) look surprising?   What is happening?
-
-
-
-------------------------------# Support Vector regression---------------------------------------------------
-
-https://www.geeksforgeeks.org/support-vector-regression-svr-using-linear-and-non-linear-kernels-in-scikit-learn/
-
-https://minimatech.org/non-linear-regression-with-r/
-
-# Support Vector regression
-
-```{r}
-MCDataHourSVR <- MCDataHour %>%
-  select(c(time, ToD, Day, mu_Averh, Actinic_umolphotonsm2h,  SampleID, Strain, Tube, Run, Par_ue, Photoperiod, OD720, OD680, deltaOD, Actinic_par, WL, O2)) %>%
-  drop_na(mu_Averh) %>% 
-  drop_na(Actinic_umolphotonsm2h)
-
-
-# Function to train an SVM model and make predictions
-train_and_predict_svm <- function(data) {
-  svr_model <- svm(mu_Averh ~ time, data = data, kernel = 'radial',
-                   cost = 24, gamma = 100)
-  data$svr_pred <- predict(svr_model, data)
-  return(data)
-}
-
-# Group by Tube, train SVM model, and make predictions within each group
-MCDataHourSVR <- MCDataHourSVR %>%
-  group_by(Tube, Run) %>%
-  nest() %>%
-  mutate(data = map(data, train_and_predict_svm)) %>%
-  unnest(data) %>%
-  ungroup()
-
-# Calculate the root mean squared error for each group
-RMSE_by_Tube <- MCDataHourSVR %>%
-  group_by(Tube, Run) %>%
-  summarise(RMSE = sqrt(mean((mu_Averh - svr_pred)^2)))
-
-```
-
-
-# Save Rds for further analysis
-
-```{r save rds}
-# saveRDS(MCImportAll, file.path(DataOut, paste(Project, "Processed_MCDielLightData.Rds", sep = "_"), fsep = .Platform$file.sep), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
-```
-
-# Variable names used in Data Dictionary
-
-```{r}
-colnames(MCDataHourSVR)
-```
-
-# Create preliminary plot
-
-```{r}
-MCDataHourSVR %>%
-  filter(Par_ue == 300) %>%
-  filter(Photoperiod == 16) %>%
-  ggplot() +
-  geom_point(aes(x = time, y = mu_Averh), alpha = 0.4) +
-  geom_line(aes(x = time, y = svr_pred, color = 'SVR_radial')) +
-  geom_line(aes(x = time, y = mu_Averh)) +
-    geom_vline(aes(xintercept = 1 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 2 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 3 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 4 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 5 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 6 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 7 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 8 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 9 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 10 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 11 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 12 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 13 * 24), linetype = "dashed") +
-    geom_vline(aes(xintercept = 14 * 24), linetype = "dashed") +
-  facet_grid(rows = vars(Strain), cols = vars (Photoperiod)) +
-  theme_bw()
-
-MCDataHourSVR %>%
-  filter(Par_ue == 300) %>% 
-  filter(Photoperiod == 12) %>% 
-  #filter(Strain == "BA127R") %>% 
-  ggplot() +
-  geom_point(aes(x = time, y = mu_Averh), alpha = 0.4) +
-  geom_line(aes(x = time, y = svr_pred, color = 'SVR_radial'), size = 1.3) +
-  geom_line(aes(x = time, y = mu_Averh)) +
-    geom_vline(aes(xintercept = 1 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 2 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 3 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 4 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 5 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 6 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 7 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 8 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 9 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 10 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 11 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 12 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 13 * 24), linetype = "dashed") + 
-    geom_vline(aes(xintercept = 14 * 24), linetype = "dashed") + 
-  facet_grid(rows = vars(Strain), cols = vars (Photoperiod)) +
-  theme_bw()
-```
-
-
-# Add facets labels and change strain name to create plot
-
-```{r add facets labels and change strain names}
-# MCImportAll$facetsPar_ue = factor(MCImportAll$O2, labels = c("PAR~(µmol~photons~m^{-2}~s^{-1})"))
-# MCImportAll$facetsPhotoperiod = factor(MCImportAll$WL, labels = c("Photoperiod~(h)"))
-# 
-# MCImportAll <- MCImportAll %>% 
-#   filter(Strain == "BA127R" | Strain == "BA48R" | Strain == "BA56G" | Strain == "BA77G") %>% 
-#   mutate(Strain=case_when(Strain=="BA127R"~"PE-rich_127",
-#          Strain=="BA48R"~"PE-rich_048",
-#         Strain=="BA56G"~"PC-rich_056",
-#          Strain=="BA77G"~"PC-rich_077")) 
-```
-
-# Create preliminary plot
-
-```{r warning = FALSE}
-#https://jmsallan.netlify.app/blog/the-brewer-palettes/
-myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
-sc <- scale_colour_gradientn(colours = myPalette(10))
-
-# MCImportAll %>%
-#   filter(time<250) %>% 
-#   filter(time>70) %>% 
-#   filter(Par_ue == 300) %>% 
-#   filter(Photoperiod == 12) %>% 
-#   filter(Strain == "PC-rich_077") %>% 
-#   ggplot() +
-#   #geom_point(aes(x = time, y = mu_deltaODwindow), alpha = 0.4) +
-#   geom_point(aes(x = time, y = mu_Averh, colour = Actinic_photonsm2h), alpha = 0.9) +
-#   #geom_line(aes(x = time, y = svr_pred), color = 'blue', size = 0.7) +
-#   geom_line(aes(x = time, y = mu_Averh)) +
-#   sc +
-#   facet_grid(rows = vars(Strain), cols = vars (Photoperiod)) +
-#   theme_bw()
-
-```
-
-
-# Save plot 
-
-```{r save plot}
-# ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRateExample1",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
-```
-
-# Create preliminary plot
-
-```{r warning = FALSE}
-#https://jmsallan.netlify.app/blog/the-brewer-palettes/
-myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
-sc <- scale_colour_gradientn(colours = myPalette(10))
-
-# MCImportAll %>%
-#   filter(Par_ue == 300) %>% 
-#   filter(Photoperiod == 12) %>% 
-#   filter(Strain == "PE-rich_048" | Strain == "PC-rich_077") %>% 
-#   ggplot() +
-#   #geom_point(aes(x = time, y = mu_deltaODwindow), alpha = 0.4) +
-#   geom_point(aes(x = time, y = mu_Averh, colour = Actinic_photonsm2h), alpha = 0.9) +
-#   geom_line(aes(x = time, y = svr_pred), color = 'blue', size = 0.7) +
-#   #geom_line(aes(x = time, y = mu_deltaODwindow)) +
-#   sc +
-#   #scale_colour_discrete() + 
-#     geom_vline(aes(xintercept = 1 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 2 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 3 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 4 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 5 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 6 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 7 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 8 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 9 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 10 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 11 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 12 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 13 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 14 * 24), linetype = "dotted", alpha = 0.4) + 
-#   facet_grid(rows = vars(Strain), cols = vars (Photoperiod)) +
-#   theme_bw()
-# 
-# 
-# MCImportAll %>%
-#   filter(time>70) %>% 
-#   filter(Par_ue == 300) %>% 
-#   filter(Photoperiod == 12) %>% 
-#   filter(Strain == "PC-rich_077") %>% 
-#   ggplot() +
-#   #geom_point(aes(x = time, y = mu_deltaODwindow), alpha = 0.4) +
-#   geom_point(aes(x = time, y = mu_Averh, colour = Actinic_photonsm2h), alpha = 0.9) +
-#   geom_line(aes(x = time, y = svr_pred), color = 'blue', size = 0.7) +
-#   #geom_line(aes(x = time, y = mu_deltaODwindow)) +
-#   sc +
-#   #scale_colour_discrete() + 
-#     geom_vline(aes(xintercept = 1 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 2 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 3 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 4 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 5 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 6 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 7 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 8 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 9 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 10 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 11 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 12 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 13 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 14 * 24), linetype = "dotted", alpha = 0.4) + 
-#   facet_grid(rows = vars(Strain), cols = vars (Photoperiod)) +
-#   theme_bw()
-
-```
-
-# Save plot 
-
-```{r save plot}
-# ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRateExample2",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
-```
-
-
-# Create GrowthCurve plot
-
-```{r create GrowthCurve plot, warning = FALSE}
-# lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
-# 
-# MCImportAll %>%
-#   filter(Strain == "PC-rich_056") %>% 
-#   # filter(time <200) %>% 
-#  #filter(time >48) %>% 
-#   filter(Run != 77) %>% 
-#   ggplot() +
-#   geom_point(aes(x = time, y = mu_Averh), colour = "seagreen4", alpha = 0.2, show.legend = T) +
-#   geom_line(aes(x = time, y = svr_pred, colour = as.factor(Strain)), size = 0.6, show.legend = F) +
-#     geom_vline(aes(xintercept = 1 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 2 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 3 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 4 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 5 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 6 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 7 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 8 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 9 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 10 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 11 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 12 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 13 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 14 * 24), linetype = "dotted", alpha = 0.4) +
-#   scale_colour_discrete(type=c("blue"), name="") +
-#   scale_y_continuous(breaks=seq(-0.5, 0.5, by = 0.25)) +
-#   coord_cartesian(ylim = c(-0.5, 0.5)) +
-#   #labs(y = "Optical density ("~OD[680]~")", x = "Elapsed time (h)") +
-#   ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
-#   theme_bw() +
-#   theme(panel.grid.minor = element_blank(),
-#         panel.grid.major = element_blank(),
-#         axis.text = element_text(size=12),
-#         axis.title = element_text(size=16),
-#         strip.background = element_rect(fill="white"),
-#         strip.text = element_text(size=12),
-#         axis.title.y = element_text(margin=margin(r=10)),
-#         axis.title.x = element_text(margin=margin(t=10)),
-#         legend.background = element_rect(fill="transparent"),
-#         legend.position = c(0.12,0.98),
-#         legend.key.height= unit(0.005, 'cm'),
-#         legend.spacing.x = unit(0.01, 'cm'),
-#         legend.text = element_text(size=11))
-```
-
-# Save plot 
-
-```{r save plot}
-# ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_056",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
-```
-
-
-# Create GrowthCurve plot
-
-```{r create GrowthCurve plot, warning = FALSE}
-# lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
-# 
-# MCImportAll %>%
-#   filter(Strain == "PC-rich_077") %>% 
-#   # filter(time <200) %>% 
-#  #filter(time >48) %>% 
-#   filter(Run != 77) %>% 
-#   ggplot() +
-#   geom_point(aes(x = time, y = mu_Averh), colour = "palegreen3", alpha = 0.2, show.legend = T) +
-#   geom_line(aes(x = time, y = svr_pred, colour = as.factor(Strain)), size = 0.6, show.legend = F) +
-#     geom_vline(aes(xintercept = 1 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 2 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 3 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 4 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 5 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 6 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 7 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 8 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 9 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 10 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 11 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 12 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 13 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 14 * 24), linetype = "dotted", alpha = 0.4) +
-#   scale_colour_discrete(type=c("blue"), name="") +
-#   scale_y_continuous(breaks=seq(-0.5, 0.5, by = 0.25)) +
-#   coord_cartesian(ylim = c(-0.5, 0.5)) +
-#   #labs(y = "Optical density ("~OD[680]~")", x = "Elapsed time (h)") +
-#   ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
-#   theme_bw() +
-#   theme(panel.grid.minor = element_blank(),
-#         panel.grid.major = element_blank(),
-#         axis.text = element_text(size=12),
-#         axis.title = element_text(size=16),
-#         strip.background = element_rect(fill="white"),
-#         strip.text = element_text(size=12),
-#         axis.title.y = element_text(margin=margin(r=10)),
-#         axis.title.x = element_text(margin=margin(t=10)),
-#         legend.background = element_rect(fill="transparent"),
-#         legend.position = c(0.12,0.98),
-#         legend.key.height= unit(0.005, 'cm'),
-#         legend.spacing.x = unit(0.01, 'cm'),
-#         legend.text = element_text(size=11))
-```
-
-# Save plot 
-
-```{r save plot}
-# ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_077",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
-```
-
-# Create GrowthCurve plot
-
-```{r create GrowthCurve plot, warning = FALSE}
-# lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
-# 
-# MCImportAll %>%
-#   filter(Strain == "PE-rich_048") %>% 
-#   # filter(time <200) %>% 
-#  #filter(time >48) %>% 
-#   filter(Run != 77) %>% 
-#   ggplot() +
-#   geom_point(aes(x = time, y = mu_Averh), colour = "brown1", alpha = 0.2, show.legend = T) +
-#   geom_line(aes(x = time, y = svr_pred, colour = as.factor(Strain)), size = 0.6, show.legend = F) +
-#     geom_vline(aes(xintercept = 1 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 2 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 3 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 4 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 5 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 6 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 7 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 8 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 9 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 10 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 11 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 12 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 13 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 14 * 24), linetype = "dotted", alpha = 0.4) +
-#   scale_colour_discrete(type=c("blue"), name="") +
-#   scale_y_continuous(breaks=seq(-0.5, 0.5, by = 0.25)) +
-#   coord_cartesian(ylim = c(-0.5, 0.5)) +
-#   #labs(y = "Optical density ("~OD[680]~")", x = "Elapsed time (h)") +
-#   ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
-#   theme_bw() +
-#   theme(panel.grid.minor = element_blank(),
-#         panel.grid.major = element_blank(),
-#         axis.text = element_text(size=12),
-#         axis.title = element_text(size=16),
-#         strip.background = element_rect(fill="white"),
-#         strip.text = element_text(size=12),
-#         axis.title.y = element_text(margin=margin(r=10)),
-#         axis.title.x = element_text(margin=margin(t=10)),
-#         legend.background = element_rect(fill="transparent"),
-#         legend.position = c(0.12,0.98),
-#         legend.key.height= unit(0.005, 'cm'),
-#         legend.spacing.x = unit(0.01, 'cm'),
-#         legend.text = element_text(size=11))
-```
-
-# Save plot 
-
-```{r save plot}
-# ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_048",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
-```
-
-```{r create GrowthCurve plot, warning = FALSE}
-# lab1=c(expression("PC-rich_056"), expression("PC-rich_077"), expression("PE-rich_048"), expression("PE-rich_127"))
-# 
-# MCImportAll %>%
-#   filter(Strain == "PE-rich_127") %>% 
-#   # filter(time <200) %>% 
-#  #filter(time >48) %>% 
-#   filter(Run != 77) %>% 
-#   ggplot() +
-#   geom_point(aes(x = time, y = mu_Averh), colour = "brown4", alpha = 0.2, show.legend = T) +
-#   geom_line(aes(x = time, y = svr_pred, colour = as.factor(Strain)), size = 0.6, show.legend = F) +
-#     geom_vline(aes(xintercept = 1 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 2 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 3 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 4 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 5 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 6 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 7 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 8 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 9 * 24), linetype = "dotted", alpha = 0.4) + 
-#     geom_vline(aes(xintercept = 10 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 11 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 12 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 13 * 24), linetype = "dotted", alpha = 0.4) +
-#     geom_vline(aes(xintercept = 14 * 24), linetype = "dotted", alpha = 0.4) +
-#   scale_colour_discrete(type=c("blue"), name="") +
-#   scale_y_continuous(breaks=seq(-0.5, 0.5, by = 0.25)) +
-#   coord_cartesian(ylim = c(-0.5, 0.5)) +
-#   #labs(y = "Optical density ("~OD[680]~")", x = "Elapsed time (h)") +
-#   ggh4x::facet_nested(cols = vars(facetsPhotoperiod, Photoperiod), rows = vars(facetsPar_ue, Par_ue), labeller = label_parsed) +
-#   theme_bw() +
-#   theme(panel.grid.minor = element_blank(),
-#         panel.grid.major = element_blank(),
-#         axis.text = element_text(size=12),
-#         axis.title = element_text(size=16),
-#         strip.background = element_rect(fill="white"),
-#         strip.text = element_text(size=12),
-#         axis.title.y = element_text(margin=margin(r=10)),
-#         axis.title.x = element_text(margin=margin(t=10)),
-#         legend.background = element_rect(fill="transparent"),
-#         legend.position = c(0.12,0.98),
-#         legend.key.height= unit(0.005, 'cm'),
-#         legend.spacing.x = unit(0.01, 'cm'),
-#         legend.text = element_text(size=11))
-```
-
-# Save plot 
-
-```{r save plot}
-# ggsave(file = file.path(FigPath, paste("SFig_HourlyGrowthRate_127",".png",sep = "")), height=9, width= 7,  dpi = 300, limitsize = TRUE)
-```
-
-
-```{r}
-# rm(sc, result, MCDataHourSVR, MCData)
-```
-
-
-
-
-
-
-
-# Support Vector regression for single run
-
-```{r}
-# library(e1071)
-# svr_model <- svm(mu_deltaODwindow ~ time, data = MCDataHourTest, kernel = 'radial',
-#                  cost = 24, gamma = 100)
-# resid_svr <- MCDataHourTest$mu_deltaODwindow - predict(svr_model)
-# sqrt(mean(resid_svr ^ 2))
-```
-
-```{r}
-# ## test residuals
-# test_resid_svr <- MCDataHourTest$mu_deltaODwindow - predict(svr_model, MCDataHourTest)
-# ## test RMSE
-# sqrt(mean(test_resid_svr ^ 2))
-# ## R Squared
-# cor(MCDataHourTest$mu_deltaODwindow, predict(svr_model, MCDataHourTest)) ^ 2
-# 
-# MCDataHourTest$svr_pred <- predict(svr_model, MCDataHourTest)
-```
-
-```{r}
-# MCDataHourTest <-MCDataHour %>% 
-#   select(c(time, Day, mu_deltaODwindow, Actinic_photonsm2h, Tube)) %>% 
-#   filter(Tube == 5) %>% 
-#   #filter(time >= 24) %>% 
-#    # filter(time <= 240) %>% 
-#   drop_na(mu_deltaODwindow)
-#   
-# myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
-# sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(100, 1000000))
-# 
-# MCDataHourTest |>
-#   ggplot() +
-#   geom_point(aes(x = time, y = mu_deltaODwindow, colour = Actinic_photonsm2h)) +
-#   geom_line(aes(x = time, y = mu_deltaODwindow, colour = Actinic_photonsm2h)) +
-#   sc +
-#     geom_vline(aes(xintercept = 1 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 2 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 3 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 4 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 5 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 6 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 7 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 8 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 9 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 10 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 11 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 12 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 13 * 24), linetype = "dashed") + 
-#     geom_vline(aes(xintercept = 14 * 24), linetype = "dashed") + 
-#   facet_grid(cols = vars(Tube)) +
-#   theme_bw()
-```
-
-
-
-
-
-
-
 
 
