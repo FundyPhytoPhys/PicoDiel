@@ -223,7 +223,7 @@ DielLightGrowthPro |>
 #use case_when to remove 'dark' periods?
 #bad to filter and only then estimate growth rates; better to do across 1 h window
 
-
+#scale_color_gradient2 to have noon light, start and end of ToD dark
 
 DielLightGrowthPro |> 
   filter(Run == 114) %>% 
@@ -232,7 +232,7 @@ DielLightGrowthPro |>
    filter(tubedata_time <= 96) |>
   ggplot() +
   geom_point(aes(x = tubedata_Actinic_umolphotonsm2h, y = tubedata_mu_Averh, colour = tubedata_ToD)) +
-   scale_color_gradient2(low = "black", mid = "yellow", high = "black", midpoint = 12) + #scale_color_gradient2 to have noon light, start and end of ToD dark
+   scale_color_gradient2(low = "black", mid = "yellow", high = "black", midpoint = 12) 
 
 
 DielLightGrowthPro |>
