@@ -91,25 +91,42 @@ DielData |>
 ```
 #Estimate minium & maximum growth rate for each day
 Also think about 'compensation point' where growth passes 0
+Sylwia Runs 71, 74, 77 121 problematic
 
 ```{r minmax_growth}
 #use nest or group_by?
+# unique(DielData$Run)
+#39  40  43  44  45  46  50  60  62  65  71  74  77 121
 
-DielData |>
-  filter(Run == 39) |> 
+
+MaxMuLightData <- DielData |>
+  filter(Run %in% c(39, 40, 43, 44, 45, 46, 50, 60, 62, 65)) |> 
   filter(time >= 24) |>
-  #filter(time < 100) |>
+  filter(time < 100) |>
   group_by(Filename, Tube, Day) |>
   mutate(MinMu = min(mu_Averh, na.rm = TRUE),
          MaxMu = max(mu_Averh, na.rm = TRUE),
-         MinToD = ToD[which(mu_Averh == min(mu_Averh, na.rm = TRUE))],
-         MaxToD = ToD[which(mu_Averh == max(mu_Averh, na.rm = TRUE))]
-  ) |>
+         MinMuToD = ToD[which(mu_Averh == min(mu_Averh, na.rm = TRUE))],
+         MaxMuToD = ToD[which(mu_Averh == max(mu_Averh, na.rm = TRUE))],
+         LightMaxToD = ToD[which(Actinic_umolphotonsm2h == max(Actinic_umolphotonsm2h, na.rm = TRUE))],
+         deltaMaxMuLightToD = MaxMuToD - LightMaxToD
+  )
+
+
+MaxMuLightData |>
    ggplot() +
-  geom_point(aes(x = ToD, y  = Actinic_umolphotonsm2h), colour = "Yellow") +
-  geom_point(aes(x = MaxToD, y  = MaxMu)) +
-  #geom_point(aes(x = time, y = OD720), colour = "green") +
+  geom_point(aes(x =ToD, y  = Actinic_umolphotonsm2h/100000), colour = "Yellow") +
+  geom_point(aes(x = LightMaxToD, y  = MaxMuToD, colour = MaxMu)) +
+  coord_cartesian(xlim = c(0, 24)) +
   facet_grid(cols = vars(Tube), rows = vars(Filename)) +
+  theme_bw()
+
+MaxMuLightData |>
+  ggplot() +
+  geom_point(aes(x = Photoperiod, y  = deltaMaxMuLightToD)) +
+  geom_point(aes(x = LightMaxToD, y  = MaxMuToD, colour = MaxMu)) +
+  coord_cartesian(xlim = c(0, 24)) +
+  facet_grid(cols = vars(Par_ue)) +
   theme_bw()
   
 ```
