@@ -102,7 +102,7 @@ Sylwia Runs 71, 74, 77 121 problematic
 MaxMuLightData <- DielData |>
   filter(Run %in% c(39, 40, 43, 44, 45, 46, 50, 60, 62, 65)) |> 
   filter(time >= 24) |>
-  filter(time < 100) |>
+  filter(time < 96) |>
   group_by(Filename, Tube, Day) |>
   mutate(MinMu = min(mu_Averh, na.rm = TRUE),
          MaxMu = max(mu_Averh, na.rm = TRUE),
@@ -123,10 +123,11 @@ MaxMuLightData |>
 
 MaxMuLightData |>
   ggplot() +
-  geom_point(aes(x = Photoperiod, y  = deltaMaxMuLightToD)) +
-  geom_point(aes(x = LightMaxToD, y  = MaxMuToD, colour = MaxMu)) +
-  coord_cartesian(xlim = c(0, 24)) +
-  facet_grid(cols = vars(Par_ue)) +
+  geom_point(aes(x = Par_ue, y  = deltaMaxMuLightToD, colour = as.factor(Run))) +
+  geom_smooth(aes(x = Par_ue, y  = deltaMaxMuLightToD), method = "lm") +
+  #geom_point(aes(x = LightMaxToD, y  = MaxMuToD, colour = MaxMu)) +
+  #coord_cartesian(xlim = c(0, 24)) +
+  facet_grid(cols = vars(Photoperiod)) +
   theme_bw()
   
 ```
