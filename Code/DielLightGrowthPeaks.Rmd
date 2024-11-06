@@ -78,12 +78,12 @@ DielData |>
 
 ```{r preliminary plot}
 DielData |>
-  filter(Run == 39) %>% 
+  #filter(Run == 39) %>% 
   filter(time >= 24) |>
   #        time <= 72) |>
   #filter(time < 100) |>
   ggplot() +
-  geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
+  geom_point(aes(x = ToD, y = Actinic_umolphotonsm2h, colour = mu_Averh)) +
   #geom_point(aes(x = time, y = OD720), colour = "green") +
   facet_grid(cols = vars(Tube), rows = vars(Filename)) +
   theme_bw()
@@ -98,19 +98,35 @@ Sylwia Runs 71, 74, 77 121 problematic
 # unique(DielData$Run)
 #39  40  43  44  45  46  50  60  62  65  71  74  77 121
 
+#errors estimating LightMaxToD
 
 MaxMuLightData <- DielData |>
-  filter(Run %in% c(39, 40, 43, 44, 45, 46, 50, 60, 62, 65)) |> 
+  filter(Run %in% c(39, 40, 43, 44, 45, 46, 50, 60, 62, 65,  71,  74, 77, 121)) |> 
   filter(time >= 24) |>
-  filter(time < 96) |>
+  filter(time < 48)  |>
   group_by(Filename, Tube, Day) |>
-  mutate(MinMu = min(mu_Averh, na.rm = TRUE),
+  summarise(MinMu = min(mu_Averh, na.rm = TRUE),
          MaxMu = max(mu_Averh, na.rm = TRUE),
-         MinMuToD = ToD[which(mu_Averh == min(mu_Averh, na.rm = TRUE))],
-         MaxMuToD = ToD[which(mu_Averh == max(mu_Averh, na.rm = TRUE))],
-         LightMaxToD = ToD[which(Actinic_umolphotonsm2h == max(Actinic_umolphotonsm2h, na.rm = TRUE))],
+         MinMuToD = ToD[which(mu_Averh == MinMu)],
+         MaxMuToD = ToD[which(mu_Averh == MaxMu)],
+         LightMaxToD = 12, #hack to cope with continuous light runs
          deltaMaxMuLightToD = MaxMuToD - LightMaxToD
-  )
+  ) 
+
+
+MaxMuLightData |>
+  ggplot() +
+  geom_point(aes(x = LightMaxToD, y  = MaxMuToD, colour = MaxMu)) +
+  coord_cartesian(xlim = c(0, 24)) +
+  facet_grid(cols = vars(Tube), rows = vars(Filename)) +
+  theme_bw()
+
+|>
+  ungroup() |>
+  group_by(Filename, Tube) |>
+  mutate(MeanMaxMuToD = mean(MaxMuToD, na.rm = TRUE),
+         MeandeltaMaxMuLightToD = MeanMaxMuToD - LightMaxToD) |>
+  ungroup()
 
 
 MaxMuLightData |>
@@ -123,7 +139,8 @@ MaxMuLightData |>
 
 MaxMuLightData |>
   ggplot() +
-  geom_point(aes(x = Par_ue, y  = deltaMaxMuLightToD, colour = as.factor(Run))) +
+  #geom_point(aes(x = Par_ue, y  = deltaMaxMuLightToD, colour = as.factor(Run))) +
+  geom_point(aes(x = Par_ue, y  = MeandeltaMaxMuLightToD , colour = as.factor(Run))) +
   geom_smooth(aes(x = Par_ue, y  = deltaMaxMuLightToD), method = "lm") +
   #geom_point(aes(x = LightMaxToD, y  = MaxMuToD, colour = MaxMu)) +
   #coord_cartesian(xlim = c(0, 24)) +
