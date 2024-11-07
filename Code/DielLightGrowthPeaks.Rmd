@@ -4,6 +4,7 @@ author:
 - Douglas A. Campbell
 - Sylwia Wilczewska-Wilinska
 - Mireille Savoie
+- Natasha Ryan
 date: "`r format(Sys.Date())`"
 bibliography: Prochlorococcus_O2_NPQ.bib
 csl: plos-one.csl
@@ -16,6 +17,8 @@ editor_options:
 This exploratory Rmd loads estimates of hourly and diel cumulative photon dose to cultures generated from PSI MC data file.
 
 It plots timing of peaks of growth rates vs. peaks of PAR and ToD to detect shifts in timing with growth conditions & strain.
+
+Time series analyses adapted from code by Natasha Ryan
 
   
 # Set Options
@@ -30,6 +33,8 @@ knitr::opts_chunk$set(fig.path='Figs/')
 ```{r libraries}
 library(tidyverse)
 library(zoo)
+library(doBy)
+library(WaveletComp)
 
 library(e1071)
 library(gcookbook)  # Load gcookbook for the uspopage data set
@@ -48,10 +53,12 @@ Project <- "PicoDiel"
 DataOut <- file.path("..", "Data", "ProcessedData", "DielLightPeaks")
 
 FigPath <- file.path("..", "Output", "Figures")
+siglvl <- 0.05 #specifies statistical significance level
+seriesvar <- "mu_Averh" #sets the variable to be used for time series analyses
+
 # FigRdsPath <- file.path("..", "Output", "FiguresRds")
 # TableRdsPath <- file.path("..", "Output", "TablesRDS")
 ```
-
 
 
 ## Read Data
@@ -129,14 +136,146 @@ DielFilter |>
 
 
 
+```{r create functions}
+
+
+#function for wavelet transformation 
+wavelet <- function(data_list){
+  wavelet_list <- lapply(data_list, function(data) {
+    WaveletComp::analyze.wavelet(data, seriesvar,
+                                 method = "white.noise",
+                                 loess.span = 0.85, 
+                                 dt = 1, dj=1/500, 
+                                 n.sim = 100, 
+                                 verbose = FALSE)
+  })
+return(wavelet_list)
+}
+
+
+#function for wavelet reconstruction, applies reconstruct() function from WaveletComp to all wavelets in a list
+reconstructwave <- function(wavelet_list) {
+  reconstructed_list <- lapply(wavelet_list, function(wave) {
+    WaveletComp::reconstruct(wave, siglvl = siglvl, 
+                             #plot.waves = TRUE,
+                             plot.rec = FALSE,
+                             lwd = 1.5, 
+                             col=c("#0E1126","#429F78"), 
+                             legend.coords = "topright",
+                             legend.text = c("Original", "Reconstructed"),
+                             #timelab = "Flash Number", 
+                             verbose = FALSE)
+ })
+  return(reconstructed_list) 
+}
+
+
+#function to extract the number of oscillating flashes from the reconstruction 
+damping <- function(reconstructed) {
+  result_list <- lapply(reconstructed, function(condition) {
+    return(condition$series)
+  }) #extract reconstructed wave data from 'reconstruct' objects 
+  result_df <- data.frame(condition = character(0), damping.index = integer(0), stringsAsFactors = FALSE)
+  
+  for (condition in names(result_list)) {
+    extract <- result_list[[condition]] 
+    
+    extract$difference <- c(NA, diff(extract$`FvFmrunnorm.r`)) #calculate difference in reconstructed FvFm values between successive rows 
+    
+    cycling.flashes <- which(extract$difference != 0) #extract row index where FvFm is oscillating
+    
+    damping.index <- max(cycling.flashes) #extract the highest row index (last row before FvFm damps)
+    
+    result_df <- rbind(result_df, data.frame(condition = condition, damping.index = damping.index))
+  }
+  return(result_df)
+}
+
+# Returns conditions with significant periodicity at 4 
+wt.significance <- function(wavelets) {
+  result_list <- lapply(names(wavelets), function(condition_name) {
+    condition <- wavelets[[condition_name]]
+    Power.avg <- condition$Power.avg
+    Power.avg.pval <- condition$Power.avg.pval
+    Period <- condition$Period
+    Condition <- rep(condition_name, length(Power.avg))  
+    df <- data.frame(Power.avg, Power.avg.pval, Period, Condition)
+    
+    return(df)
+  })
+
+  result_df <- bind_rows(result_list) %>%
+    filter(Power.avg.pval <= siglvl) %>%
+    filter(between(Period, 3.9, 4.1))
+  
+    significantconditions <- unique(result_df$Condition)
+  
+  return(significantconditions)
+}
+
+
+#plot of wavelet power averages across time, indicates which conditions show a significant periodicity of 4
+plot.wt.avg <- function(wavelet_list) {
+  
+  for (condition in names(wavelet_list)) {
+    extract <- wavelet_list[[condition]] 
+    
+    WaveletComp::wt.avg(extract, siglvl = siglvl,
+      sigcol = "#71CF61", 
+      maximum.level = 1,
+      averagelab = "Average Wavelet Power",
+      periodlab = "Period",
+      legend.coords = "topright",
+      main = condition)}
+}
+
+#image plot of the wavelet power spectrum of a time series
+plot.wt.image <- function(wavelet_list) {
+  
+  for (condition in names(wavelet_list)) {
+    extract <- wavelet_list[[condition]] 
+    
+    WaveletComp::wt.image(extract,
+         plot.coi = FALSE,
+         siglvl = siglvl,
+         color.key = "i",
+         color.palette = "rainbow(n.levels, start = 0, end = .7)",
+         timelab = "Flash Number",
+         spec.time.axis = list(at = c(4,8,12,16,20,24,28,32)),
+         periodlab = "Period",
+         main = condition)}
+}
+```
+
+
+# Takuvik
+
+### Fc 
+```{r import Fc G0 data}
+Fc_fits <- list.files(path = DataIn, pattern = paste(Fc, FileID, sep = "_"), full.names = TRUE) %>%
+  readRDS()
+
+Fc_data <- summaryBy(FvFmrunnorm ~ PulseSpace_s + Temp_C + Flashnumber + Light_Level + GrowthTemp_C, data=Fc_fits, FUN=mean, keep.names = TRUE) %>%
+  splitBy(formula = ~ PulseSpace_s + Temp_C + Light_Level + GrowthTemp_C) %>%
+  setNames(., paste0("Fc_", gsub("\\|", "_", names(.))))
+```
+
+```{r wavelet transformation Fc}
+Fc_wavelets <- wavelet(Fc_data)
+```
+
+
+
+
+
+
 
 
 # Estimate minium & maximum growth rate for each day
 Issues here b/c hourly growth rate does not vary much through 24 h?
 Noisy points overwhelm signal?
 Need average firstly?
-Also think about 'compensation point' where growth passes 0
-Sylwia Runs 71, 74, 77 121 problematic
+Also think about 'compensation point' where growth passes 0 and then falls back below 0?
 
 ```{r minmax_growth}
 #use nest or group_by?
@@ -145,8 +284,8 @@ Sylwia Runs 71, 74, 77 121 problematic
 
 #errors estimating LightMaxToD
 
-MaxMuLightData <- DielData |>
-  filter(Run %in% c(39, 40, 43, 44, 45, 46, 50, 60, 62, 65,  71,  74, 77, 121)) |> 
+MaxMuLightData <- DielFilter |>
+  #filter(Run %in% c(39, 40, 43, 44, 45, 46, 50, 60, 62, 65,  71,  74, 77, 121)) |> 
   filter(time >= 24) |>
   filter(time < 48)  |>
   group_by(Filename, Photoperiod, Par_ue, Tube, Day) |>
@@ -154,7 +293,7 @@ MaxMuLightData <- DielData |>
          MaxMu = max(mu_Averh, na.rm = TRUE),
          MinMuToD = ToD[which(mu_Averh == MinMu)],
          MaxMuToD = ToD[which(mu_Averh == MaxMu)],
-         LightMaxToD = 12, #hack to cope with continuous light runs
+         LightMaxToD = 13, #hack to cope with continuous light runs
          deltaMaxMuLightToD = MaxMuToD - LightMaxToD
   ) |>
   ungroup()
@@ -181,6 +320,24 @@ MaxMuLightData |>
   geom_hline(aes(yintercept = LightMaxToD)) +
   #coord_cartesian(xlim = c(0, 24)) +
   facet_grid(cols = vars(Photoperiod)) +
+  theme_bw()
+
+MaxMuLightData |>
+  ggplot() +
+  geom_point(aes(x = Photoperiod, y  = MaxMuToD, colour = MaxMu)) +
+  geom_smooth(aes(x = Photoperiod, y  = MaxMuToD), method  = "lm") +
+  geom_hline(aes(yintercept = LightMaxToD)) +
+  #coord_cartesian(xlim = c(0, 24)) +
+  facet_grid(cols = vars(Par_ue)) +
+  theme_bw()
+
+MaxMuLightData |>
+  ggplot() +
+  geom_point(aes(x = Photoperiod, y  = MaxMuToD, colour = MaxMu)) +
+  geom_smooth(aes(x = Photoperiod, y  = MaxMuToD), method  = "lm") +
+  geom_hline(aes(yintercept = LightMaxToD)) +
+  #coord_cartesian(xlim = c(0, 24)) +
+  #facet_grid(cols = vars(Par_ue)) +
   theme_bw()
 
 
