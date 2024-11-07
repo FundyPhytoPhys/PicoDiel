@@ -61,6 +61,7 @@ FigPath <- file.path("..", "Output", "Figures")
 DielData <- readRDS(file = file.path("..", "Data", "ProcessedData", "ProcessedMCDielLightData","DielLightGrowth.Rds"))
 ```
 
+
 # Exploratory Plots from representative data file
 ```{r par_time_plot}
 DielData |>
@@ -78,18 +79,62 @@ DielData |>
 
 ```{r preliminary plot}
 DielData |>
-  #filter(Run == 39) %>% 
-  filter(time >= 24) |>
-  #        time <= 72) |>
-  #filter(time < 100) |>
+  filter(Run == 39) %>% 
+  filter(time >= 24,
+          time <= 72) |>
   ggplot() +
   geom_point(aes(x = ToD, y = Actinic_umolphotonsm2h, colour = mu_Averh)) +
-  #geom_point(aes(x = time, y = OD720), colour = "green") +
-  facet_grid(cols = vars(Tube), rows = vars(Filename)) +
+  geom_point(aes(x = time, y = OD720), colour = "green") +
+  facet_grid(cols = vars(Photoperiod), rows = vars (Par_ue)) +
   theme_bw()
+  
+DielData |>
+  filter(time >= 48,
+         time <= 96) |>
+  ggplot() +
+  geom_point(aes(x = ToD, y = mu_Averh)) +
+  geom_vline(aes(xintercept = 12)) + #hack for peak light ToD
+  facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod)) +
+  theme_bw()  
+
+DielData |>
+  filter(time >= 48,
+         time <= 96) |>
+  ggplot() +
+  geom_point(aes(x = time, y = mu_Averh)) +
+  facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod)) +
+  theme_bw()  
 
 ```
-#Estimate minium & maximum growth rate for each day
+
+## Apply filter to remove outlier points 
+Think of a better way?
+mu 1 d-1 ~ 0.042
+
+```{r DielFilter}
+DielFilter <- DielData |>
+  filter(mu_Averh > -0.1,
+         mu_Averh < 0.1)
+
+DielFilter |>
+  filter(time >= 24,
+         time <= 120) |>
+  ggplot() +
+  geom_point(aes(x = time, y = mu_Averh)) +
+  facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod, Filename)) +
+  theme_bw()  
+```
+
+# Implement time series analyses to detect timing of peaks?
+
+
+
+
+
+# Estimate minium & maximum growth rate for each day
+Issues here b/c hourly growth rate does not vary much through 24 h?
+Noisy points overwhelm signal?
+Need average firstly?
 Also think about 'compensation point' where growth passes 0
 Sylwia Runs 71, 74, 77 121 problematic
 
@@ -104,49 +149,42 @@ MaxMuLightData <- DielData |>
   filter(Run %in% c(39, 40, 43, 44, 45, 46, 50, 60, 62, 65,  71,  74, 77, 121)) |> 
   filter(time >= 24) |>
   filter(time < 48)  |>
-  group_by(Filename, Tube, Day) |>
+  group_by(Filename, Photoperiod, Par_ue, Tube, Day) |>
   summarise(MinMu = min(mu_Averh, na.rm = TRUE),
          MaxMu = max(mu_Averh, na.rm = TRUE),
          MinMuToD = ToD[which(mu_Averh == MinMu)],
          MaxMuToD = ToD[which(mu_Averh == MaxMu)],
          LightMaxToD = 12, #hack to cope with continuous light runs
          deltaMaxMuLightToD = MaxMuToD - LightMaxToD
-  ) 
-
-
-MaxMuLightData |>
-  ggplot() +
-  geom_point(aes(x = LightMaxToD, y  = MaxMuToD, colour = MaxMu)) +
-  coord_cartesian(xlim = c(0, 24)) +
-  facet_grid(cols = vars(Tube), rows = vars(Filename)) +
-  theme_bw()
-
-|>
-  ungroup() |>
-  group_by(Filename, Tube) |>
-  mutate(MeanMaxMuToD = mean(MaxMuToD, na.rm = TRUE),
-         MeandeltaMaxMuLightToD = MeanMaxMuToD - LightMaxToD) |>
+  ) |>
   ungroup()
 
+# 
+# |>
+#   ungroup() |>
+#   group_by(Filename, Tube) |>
+#   mutate(MeanMaxMuToD = mean(MaxMuToD, na.rm = TRUE),
+#          MeandeltaMaxMuLightToD = MeanMaxMuToD - LightMaxToD) |>
+#   ungroup()
 
 MaxMuLightData |>
-   ggplot() +
-  geom_point(aes(x =ToD, y  = Actinic_umolphotonsm2h/100000), colour = "Yellow") +
+  ggplot() +
   geom_point(aes(x = LightMaxToD, y  = MaxMuToD, colour = MaxMu)) +
   coord_cartesian(xlim = c(0, 24)) +
-  facet_grid(cols = vars(Tube), rows = vars(Filename)) +
+  facet_grid(cols = vars(Photoperiod), rows = vars(Par_ue)) +
   theme_bw()
 
 MaxMuLightData |>
   ggplot() +
-  #geom_point(aes(x = Par_ue, y  = deltaMaxMuLightToD, colour = as.factor(Run))) +
-  geom_point(aes(x = Par_ue, y  = MeandeltaMaxMuLightToD , colour = as.factor(Run))) +
-  geom_smooth(aes(x = Par_ue, y  = deltaMaxMuLightToD), method = "lm") +
-  #geom_point(aes(x = LightMaxToD, y  = MaxMuToD, colour = MaxMu)) +
+  geom_point(aes(x = Par_ue, y  = MaxMuToD, colour = MaxMu)) +
+  geom_smooth(aes(x = Par_ue, y  = MaxMuToD), method  = "lm") +
+  geom_hline(aes(yintercept = LightMaxToD)) +
   #coord_cartesian(xlim = c(0, 24)) +
   facet_grid(cols = vars(Photoperiod)) +
   theme_bw()
-  
+
+
+
 ```
 
 
