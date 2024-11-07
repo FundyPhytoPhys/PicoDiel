@@ -248,8 +248,6 @@ plot.wt.image <- function(wavelet_list) {
 ```
 
 
-# Takuvik
-
 ### Fc 
 ```{r import Fc G0 data}
 Fc_fits <- list.files(path = DataIn, pattern = paste(Fc, FileID, sep = "_"), full.names = TRUE) %>%
