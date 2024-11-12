@@ -88,16 +88,16 @@ DielData |>
 DielData |>
   filter(Run == 39) %>% 
   filter(time >= 24,
-          time <= 72) |>
+          time <= 120) |>
   ggplot() +
-  geom_point(aes(x = ToD, y = Actinic_umolphotonsm2h, colour = mu_Averh)) +
-  geom_point(aes(x = time, y = OD720), colour = "green") +
+  geom_point(aes(x = time, y = Actinic_umolphotonsm2h, colour = mu_Averh)) +
+  geom_point(aes(x = time, y = OD720 * 10000000), colour = "green") +
   facet_grid(cols = vars(Photoperiod), rows = vars (Par_ue)) +
   theme_bw()
   
 DielData |>
-  filter(time >= 48,
-         time <= 96) |>
+  filter(time >= 24,
+         time <= 120) |>
   ggplot() +
   geom_point(aes(x = ToD, y = mu_Averh)) +
   geom_vline(aes(xintercept = 12)) + #hack for peak light ToD
@@ -105,8 +105,17 @@ DielData |>
   theme_bw()  
 
 DielData |>
-  filter(time >= 48,
-         time <= 96) |>
+  filter(time >= 24,
+         time <= 120) |>
+  ggplot() +
+  geom_point(aes(x = time, y = OD720)) +
+  facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod)) +
+  theme_bw()  
+
+
+DielData |>
+  filter(time >= 24,
+         time <= 120) |>
   ggplot() +
   geom_point(aes(x = time, y = mu_Averh)) +
   facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod)) +
@@ -132,7 +141,7 @@ DielFilter |>
   theme_bw()  
 ```
 
-# Implement time series analyses to detect timing of peaks?
+# Implement time series analyses to detect timing of peaks
 
 
 
