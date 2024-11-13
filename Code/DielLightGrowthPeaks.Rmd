@@ -461,7 +461,23 @@ MaxMuLightData |>
 
 ```
 
+# Plot mu_Averh vs. cumulative photon dose
+```{r mu_Averh_cum_photon}
+DielFilter |>
+  ggplot() +
+  geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
+  facet_grid(cols = vars(Photoperiod), rows = vars(Par_ue)) +
+  theme_bw()
 
+DielFilter |>
+  filter(ToD >= 8,
+         ToD <= 13) |>
+  ggplot() +
+  geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
+  geom_smooth(aes(x = Actinic_umolphotonsm2h, y = mu_Averh)) +
+  facet_grid(cols = vars(Photoperiod), rows = vars(Par_ue)) +
+  theme_bw()
+```
 
 
 ```{r save hourly growth peaks}
