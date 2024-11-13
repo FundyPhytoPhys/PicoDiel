@@ -35,6 +35,7 @@ library(tidyverse)
 library(zoo)
 library(doBy)
 library(WaveletComp)
+library(tsibble)
 
 library(e1071)
 library(gcookbook)  # Load gcookbook for the uspopage data set
@@ -130,11 +131,11 @@ mu 1 d-1 ~ 0.042
 ```{r DielFilter}
 DielFilter <- DielData |>
   filter(mu_Averh > -0.1,
-         mu_Averh < 0.1)
+         mu_Averh < 0.1) |>
+  filter(time >= 24,
+         time <= 120)
 
 DielFilter |>
-  filter(time >= 24,
-         time <= 120) |>
   ggplot() +
   geom_point(aes(x = time, y = mu_Averh)) +
   facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod, Filename)) +
@@ -142,6 +143,34 @@ DielFilter |>
 ```
 
 # Implement time series analyses to detect timing of peaks
+https://rc2e.com/timeseriesanalysis
+
+```{r zoo_ts}
+# Test <- DielFilter |>
+#   filter(Filename == "20211214_PICO_MC247_RUN39.csv")
+# 
+# MuTime <-  zoo(x = Test$mu_Averh, order.by = Test$time)
+# 
+# head(MuTime)
+# head(Test)
+```
+
+# Try tsibble
+```{r tsibble}
+
+MuTime <- as_tsibble(DielFilter, index = time, key = c(Tube, ExpDate, MC, PrimaryOperator, SampleID, Run, Strain, ExpStartTime, Par_ue, Photoperiod, Temp_c, O2, O2_Category, WL, LightShape))
+
+MuTime |>
+ ggplot() +
+  geom_point(aes(x = time, y = mu_Averh)) +
+  facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod, Filename)) +
+  theme_bw()  
+```
+
+```{r}
+
+```
+
 
 
 
