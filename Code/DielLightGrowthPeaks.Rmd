@@ -158,7 +158,7 @@ https://rc2e.com/timeseriesanalysis
 # Try tsibble
 ```{r tsibble}
 
-MuTime <- as_tsibble(DielFilter, index = time, key = c(Tube, ExpDate, MC, PrimaryOperator, SampleID, Run, Strain, ExpStartTime, Par_ue, Photoperiod, Temp_c, O2, O2_Category, WL, LightShape))
+MuTime <- as_tsibble(DielFilter, index = time, regular = FALSE,  key = c(Filename, Tube, ExpDate, MC, PrimaryOperator, SampleID, Run, Strain, ExpStartTime, Par_ue, Photoperiod, Temp_c, O2, O2_Category, WL, LightShape))
 
 MuTime |>
  ggplot() +
@@ -167,7 +167,83 @@ MuTime |>
   theme_bw()  
 ```
 
-```{r}
+# Try Autocorrelation
+```{r autocorrelation}
+MuTime %>% acf(mu_Averh) %>% autoplot()
+
+
+acf(MuTime$mu_Averh, main = "Significant Autocorrelations")
+acf(MuTime$Actinic_par, main = "Significant Autocorrelations")
+
+summary(acf(MuTime$mu_Averh, lag = 48))
+
+acf(MuTime$mu_Averh, lag = 48)
+
+
+MuTime %>% 
+  filter(Filename == "20211214_PICO_MC247_RUN39.csv",
+         Tube == 1) %>%
+  summarise(ac = list(acf(mu_Averh, lag.max = 48))) 
+
+Test <- MuTime %>% 
+  filter(Filename == "20211214_PICO_MC247_RUN39.csv",
+         Tube == 1)
+
+  acf(Test$mu_Averh, lag = 48, main = "Significant Autocorrelations")
+
+  
+  MuTime %>%
+  group_by_key() %>%
+  index_by(time) %>% 
+  summarise(
+    mu_high = max(mu_Averh, na.rm = TRUE),
+    mu_low = min(mu_Averh, na.rm = TRUE)
+  )
+  
+    MuTime %>%
+  group_by_key() %>%
+  index_by(time) %>% 
+  summarise(
+    mu_high = max(mu_Averh, na.rm = TRUE),
+    mu_low = min(mu_Averh, na.rm = TRUE)
+  )
+```
+
+# Try autocorrelation with dataframe
+https://stackoverflow.com/questions/37325517/acf-by-group-in-r
+
+```{r acf_dataframe}
+
+grouped_acf_values <- sample_data %>%
+  tidyr::nest(-group) %>%
+  dplyr::mutate(acf_results = purrr::map(data, ~ acf(.x$value, plot = F)),
+         acf_values = purrr::map(acf_results, ~ drop(.x$acf))) %>%
+  tidyr::unnest(acf_values) %>%
+  dplyr::group_by(group) %>%
+  dplyr::mutate(lag = seq(0, n() - 1))
+
+
+  
+  
+group_acf_mu <-   DielFilter |>
+  nest(-c(Filename, Tube, ExpDate, MC, PrimaryOperator, SampleID, Run, Strain, ExpStartTime, Par_ue, Photoperiod, Temp_c, O2, O2_Category, WL, LightShape)) |>
+  mutate(acf_mu = map(data, ~ acf(.x$mu_Averh, lag = 48, plot = F)),
+         acf_mu_values = map(acf_mu, ~ drop(.x$acf))) |>
+  unnest(acf_mu_values) |>
+  dplyr::group_by(Filename, Tube, ExpDate, MC, PrimaryOperator, SampleID, Run, Strain, ExpStartTime, Par_ue, Photoperiod, Temp_c, O2, O2_Category, WL, LightShape) %>%
+  dplyr::mutate(lag = seq(0, n() - 1))
+  
+ group_acf_mu |> 
+  ggplot() +
+   geom_point(aes(x = lag, y = acf_mu_values)) +
+   facet_grid(cols = vars(Photoperiod), rows = vars(Par_ue)) +
+   theme_bw()
+   
+
+
+|>
+  group_by
+
 
 ```
 
