@@ -154,8 +154,11 @@ DielLightGrowth <- MCDataAll |>
   group_by(Filename, Tube) |>
    mutate(Actinic_umolphotonsm2h = zoo::rollsum(Actinic_par * 60 * ODinterval , k = 60/ODinterval, fill = NA, align = "right")) |> #PAR per h
   mutate(mu_OD720window = zoo::rollapply(cbind(time, log(OD720)), width = 60/ODinterval, FUN = slope, by.column=FALSE, fill=NA, align = "right")) |> #slope
-  mutate(mu_Averh = zoo::rollmean(mu_OD720window, k = 60/ODinterval, fill = NA, align = "left")) |> #average of first 12 row  ungroup() 
-filter(time - round(time) == 0) #crude collapse to 1 measurement per hour
+  mutate(mu_Averh = zoo::rollmean(mu_OD720window, k = 60/ODinterval, fill = NA, align = "left")) |> #average of first 12 row
+filter(time - round(time) == 0) |>
+  ungroup()#crude collapse to 1 measurement per hour
+
+#redo this to calculate average mu over each even hour.
 
 ```
 
@@ -185,7 +188,7 @@ DielLightGrowth |>
 DielLightGrowth |>
     filter(Run == 39) %>% 
     filter(time >= 24) |>
-   filter(time <= 96) |>
+   filter(time <= 120) |>
   ggplot() +
   geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
   scale_color_gradient2(low = "black", mid = "yellow", high = "black", midpoint = 12) +
@@ -195,7 +198,7 @@ DielLightGrowth |>
 DielLightGrowth |>
     filter(Run == 39) %>% 
     filter(time >= 24) |>
-   filter(time <= 96) |>
+   filter(time <= 120) |>
   ggplot() +
   geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
   geom_line(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
@@ -207,7 +210,7 @@ DielLightGrowth |>
     filter(Run == 39) %>% 
   filter(Tube == 4) |>
   filter(time >= 24) |>
-  filter(time <= 96) |>
+  filter(time <= 120) |>
   ggplot() +
   geom_point(aes(x = ToD, y = mu_Averh, colour = Actinic_umolphotonsm2h)) +
   scale_color_gradient(low = "black", high = "yellow") +

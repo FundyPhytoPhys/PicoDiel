@@ -20,6 +20,9 @@ It plots timing of peaks of growth rates vs. peaks of PAR and ToD to detect shif
 
 Time series analyses adapted from code by Natasha Ryan
 
+Figure out or onfirm with Sylwia on timing of photoperiods vs. 07:00? start of light in morning?  Doe peak light shift or does start time shift?
+Find solution based upon maximum PAR
+
   
 # Set Options
 
@@ -101,7 +104,7 @@ DielData |>
          time <= 120) |>
   ggplot() +
   geom_point(aes(x = ToD, y = mu_Averh)) +
-  geom_vline(aes(xintercept = 12)) + #hack for peak light ToD
+  geom_vline(aes(xintercept = 13)) + #hack for peak light ToD
   facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod)) +
   theme_bw()  
 
@@ -126,7 +129,8 @@ DielData |>
 
 ## Apply filter to remove outlier points 
 Think of a better way?
-mu 1 d-1 ~ 0.042
+Move this to previous DielLightGrowth.Rmd
+mu 1 d-1 ~ 0.042 h-1
 
 ```{r DielFilter}
 DielFilter <- DielData |>
@@ -138,7 +142,7 @@ DielFilter <- DielData |>
 DielFilter |>
   ggplot() +
   geom_point(aes(x = time, y = mu_Averh)) +
-  facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod, Filename)) +
+  facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod)) +
   theme_bw()  
 ```
 
@@ -163,7 +167,7 @@ MuTime <- as_tsibble(DielFilter, index = time, regular = FALSE,  key = c(Filenam
 MuTime |>
  ggplot() +
   geom_point(aes(x = time, y = mu_Averh)) +
-  facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod, Filename)) +
+  facet_grid(cols = vars(Par_ue), rows = vars (Photoperiod)) +
   theme_bw()  
 ```
 
@@ -194,19 +198,12 @@ Test <- MuTime %>%
   
   MuTime %>%
   group_by_key() %>%
-  index_by(time) %>% 
+  index_by(time) %>%   #what does 'index' do; I am getting a result for very time
   summarise(
     mu_high = max(mu_Averh, na.rm = TRUE),
     mu_low = min(mu_Averh, na.rm = TRUE)
   )
   
-    MuTime %>%
-  group_by_key() %>%
-  index_by(time) %>% 
-  summarise(
-    mu_high = max(mu_Averh, na.rm = TRUE),
-    mu_low = min(mu_Averh, na.rm = TRUE)
-  )
 ```
 
 # Try autocorrelation with dataframe
@@ -214,16 +211,14 @@ https://stackoverflow.com/questions/37325517/acf-by-group-in-r
 
 ```{r acf_dataframe}
 
-grouped_acf_values <- sample_data %>%
-  tidyr::nest(-group) %>%
-  dplyr::mutate(acf_results = purrr::map(data, ~ acf(.x$value, plot = F)),
-         acf_values = purrr::map(acf_results, ~ drop(.x$acf))) %>%
-  tidyr::unnest(acf_values) %>%
-  dplyr::group_by(group) %>%
-  dplyr::mutate(lag = seq(0, n() - 1))
+# grouped_acf_values <- sample_data %>%
+#   tidyr::nest(-group) %>%
+#   dplyr::mutate(acf_results = purrr::map(data, ~ acf(.x$value, plot = F)),
+#          acf_values = purrr::map(acf_results, ~ drop(.x$acf))) %>%
+#   tidyr::unnest(acf_values) %>%
+#   dplyr::group_by(group) %>%
+#   dplyr::mutate(lag = seq(0, n() - 1))
 
-
-  
   
 group_acf_mu <-   DielFilter |>
   nest(-c(Filename, Tube, ExpDate, MC, PrimaryOperator, SampleID, Run, Strain, ExpStartTime, Par_ue, Photoperiod, Temp_c, O2, O2_Category, WL, LightShape)) |>
@@ -239,11 +234,6 @@ group_acf_mu <-   DielFilter |>
    facet_grid(cols = vars(Photoperiod), rows = vars(Par_ue)) +
    theme_bw()
    
-
-
-|>
-  group_by
-
 
 ```
 
@@ -383,7 +373,7 @@ Fc_wavelets <- wavelet(Fc_data)
 
 
 
-# Estimate minium & maximum growth rate for each day
+# Estimate minium & maximum hourly growth rate for each day
 Issues here b/c hourly growth rate does not vary much through 24 h?
 Noisy points overwhelm signal?
 Need average firstly?
@@ -404,7 +394,7 @@ MaxMuLightData <- DielFilter |>
          MinMuToD = ToD[which(mu_Averh == MinMu)],
          MaxMuToD = ToD[which(mu_Averh == MaxMu)],
          LightMaxToD = 13, #hack to cope with continuous light runs
-         deltaMaxMuLightToD = MaxMuToD - LightMaxToD ) |>
+         deltaMaxMuLightToD = MaxMuToD - LightMaxToD ) |> #if growth peaks before light, negative; if growth peaks after light, positive
   ungroup() 
 
 # 
@@ -470,7 +460,7 @@ DielFilter |>
   theme_bw()
 
 DielFilter |>
-  filter(ToD >= 8,
+  filter(ToD >= 7,
          ToD <= 13) |>
   ggplot() +
   geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
@@ -478,8 +468,17 @@ DielFilter |>
   theme_bw()
 
 DielFilter |>
-  filter(ToD >= 8,
+  filter(ToD >= 7,
          ToD <= 14) |>
+  ggplot() +
+  geom_point(aes(x = dplyr::lag(Actinic_umolphotonsm2h, n = 1L), y = mu_Averh, colour = ToD)) +
+  facet_grid(cols = vars(Photoperiod), rows = vars(Par_ue)) +
+  theme_bw()
+
+DielFilter |>
+  filter(ToD >= 7,
+         ToD <= 14) |>
+  filter(Run == 39) |>
   ggplot() +
   geom_point(aes(x = dplyr::lag(Actinic_umolphotonsm2h, n = 1L), y = mu_Averh, colour = ToD)) +
   facet_grid(cols = vars(Photoperiod), rows = vars(Par_ue)) +
