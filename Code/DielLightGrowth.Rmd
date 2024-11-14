@@ -191,7 +191,7 @@ DielLightGrowth |>
    filter(time <= 120) |>
   ggplot() +
   geom_point(aes(x = Actinic_umolphotonsm2h, y = mu_Averh, colour = ToD)) +
-  scale_color_gradient2(low = "black", mid = "yellow", high = "black", midpoint = 12) +
+  scale_color_gradient2(low = "black", mid = "yellow", high = "black", midpoint = 13) +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
 
