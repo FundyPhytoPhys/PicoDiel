@@ -32,7 +32,6 @@ knitr::opts_chunk$set(fig.path='Figs/')
 ```{r libraries}
 library(zoo)
 library(tidyverse)
-library(purrr)
 
 # library(dplyr)
 # library(e1071)
@@ -234,38 +233,97 @@ DielLightGrowthPro |>
 
 #scale_color_gradient2 to have noon light, start and end of ToD dark
 
-DielLightGrowthPro |> 
-  filter(Run == 87) %>% 
-   unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
-  filter(tubedata_time >= 24) |>
-   filter(tubedata_time <= 96) |>
-  ggplot() +
-  geom_point(aes(x = tubedata_Actinic_umolphotonsm2h, y = tubedata_mu_Averh, colour = tubedata_ToD)) +
-   scale_color_gradient2(low = "black", mid = "yellow", high = "black", midpoint = 12) 
+
+# DielLightGrowthPro |>
+#     filter(Run == 87) %>% 
+#    unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
+#   filter(tubedata_time >= 24) |>
+#    filter(tubedata_time <= 120) |>
+#   ggplot() +
+#   geom_point(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h), size = 0.1) +
+#   geom_vline(xintercept = 12) +
+#   scale_color_gradient(low = "black", high = "yellow") +
+#   facet_grid(cols = vars(Tube)) +
+#   theme_bw()
 
 
 DielLightGrowthPro |>
-    filter(Run == 87) %>% 
+  filter(Strain == "MED4",
+         WL != 530,
+         O2_uM == 25,
+         Par_ue %in% c(30,90,180)) %>% 
    unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
   filter(tubedata_time >= 24) |>
-   filter(tubedata_time <= 96) |>
+   filter(tubedata_time <= 120) |>
   ggplot() +
-  geom_point(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h)) +
-  geom_line(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h)) +
+  geom_point(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h), size = 0.1) +
+  geom_vline(xintercept = 12, size = 0.1) +
+  geom_hline(yintercept = 0, size = 0.1) +
   scale_color_gradient(low = "black", high = "yellow") +
-  facet_grid(cols = vars(Tube)) +
+  facet_grid(cols = vars(Strain, Par_ue, O2_uM), rows = vars(Photoperiod, WL)) +
   theme_bw()
 
 DielLightGrowthPro |>
-    filter(Run == 87) %>% 
+  filter(Strain == "SS120",
+         WL != 530,
+         O2_uM == 25,
+         Par_ue %in% c(30,90,180)) %>% 
    unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
   filter(tubedata_time >= 24) |>
-   filter(tubedata_time <= 96) |>
-  filter(Tube == 3) |>
+   filter(tubedata_time <= 120) |>
   ggplot() +
-  geom_point(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h)) +
+  geom_point(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h), size = 0.1) +
+  geom_vline(xintercept = 12, size = 0.5) +
+  geom_hline(yintercept = 0, size = 0.1) +
   scale_color_gradient(low = "black", high = "yellow") +
-  facet_grid(cols = vars(Tube)) +
+  facet_grid(cols = vars(Strain, Par_ue, O2_uM), rows = vars(Photoperiod, WL)) +
+  theme_bw()
+
+DielLightGrowthPro |>
+  filter(Strain == "MIT9313",
+         WL != 530,
+         O2_uM == 25,
+         Par_ue %in% c(30,90,180)) %>% 
+   unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
+  filter(tubedata_time >= 24) |>
+   filter(tubedata_time <= 120) |>
+  ggplot() +
+  geom_point(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h), size = 0.1) +
+  geom_vline(xintercept = 12, size = 0.1) +
+  geom_hline(yintercept = 0, size = 0.1) +
+  scale_color_gradient(low = "black", high = "yellow") +
+  facet_grid(cols = vars(Strain, Par_ue, O2_uM), rows = vars(Photoperiod, WL)) +
+  theme_bw()
+
+DielLightGrowthPro |>
+  filter(WL == 450,
+         O2_uM == 25,
+         Par_ue %in% c(90)) %>% 
+   unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
+  filter(tubedata_time >= 24) |>
+   filter(tubedata_time <= 120) |>
+  ggplot() +
+  geom_point(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h), size = 0.1) +
+  geom_vline(xintercept = 12, size = 0.1) +
+  geom_hline(yintercept = 0, size = 0.1) +
+  scale_color_gradient(low = "black", high = "yellow") +
+  facet_grid(cols = vars(Strain, Par_ue, O2_uM), rows = vars(Photoperiod, WL)) +
+  theme_bw()
+
+DielLightGrowthPro |>
+  filter(WL == 450,
+         O2_uM == 25,
+         Par_ue %in% c(90),
+         Photoperiod != 4) %>% 
+   unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
+  filter(tubedata_time >= 24) |>
+   filter(tubedata_time <= 120) |>
+  ggplot() +
+  geom_point(aes(x = tubedata_ToD, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h), size = 0.1) +
+  geom_vline(xintercept = 12, size = 0.1) +
+  geom_hline(yintercept = 0, size = 0.1) +
+  scale_color_gradient(low = "black", high = "yellow") +
+  facet_grid(cols = vars(Strain, Par_ue, O2_uM), rows = vars(Photoperiod, WL)) +
   theme_bw()
 
 ```
@@ -273,7 +331,7 @@ DielLightGrowthPro |>
 
 
 ```{r save hourly growth}
-  saveRDS(object = DielLightGrowthPro, file = file.path(DataOut, "DielLightGrowthPro.Rds"), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+  # saveRDS(object = DielLightGrowthPro, file = file.path(DataOut, "DielLightGrowthPro.Rds"), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
 
 ```
 
