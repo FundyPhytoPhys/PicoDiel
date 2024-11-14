@@ -82,13 +82,15 @@ MCData <- readRDS(file = MCFiles[2])
 glimpse(MCData)
 
 MCData <- MCData %>% 
-  select(c(Strain,WL, SampleID, Run, Par_ue, Pur_ue, ObsDate, E_days, PurData, PurParRatio, PARPhotonDose_day, PURPhotonDose_day, Filename, Tube, ExpDate, MC, PrimaryOperator, Photoperiod, ExpEndHour, O2_uM, tubedata, OD720_logistic_predict, deltaOD_logistic_predict, OD720_Lmu_corr, deltaOD_Lmu_corr))
+  select(c(Strain,WL, SampleID, Run, Par_ue, Pur_ue, ObsDate, E_days, PurData, PurParRatio, PARPhotonDose_day, PURPhotonDose_day, Filename, Tube, ExpDate, MC, PrimaryOperator, Photoperiod, ExpEndHour, O2_uM, tubedata, GrowthAmpOD720_14days, GrowthAmpdeltaOD_14days, OD720_logistic_predict, deltaOD_logistic_predict, OD720_Lmu_corr, deltaOD_Lmu_corr))
+
+glimpse(MCData)
 
 ```
 
 ```{r par_time_plot}
 MCData |>
-  filter(Run == 114) |>
+  filter(Run == 87) |>
   unnest(cols = c(tubedata, deltaOD_logistic_predict),names_sep = "_", keep_empty = TRUE) |>
   ggplot() +
   geom_point(aes(x = tubedata_time, y = tubedata_Actinic_par, colour = WL)) +
@@ -96,7 +98,7 @@ MCData |>
   theme_bw()
 
 MCData |>
-  filter(Run == 114) |>
+  filter(Run == 87) |>
   unnest(cols = c(tubedata, deltaOD_logistic_predict),names_sep = "_", keep_empty = TRUE) |>
   filter(tubedata_time >= 48,
          tubedata_time <= 72) |>
@@ -106,7 +108,7 @@ MCData |>
   theme_bw()
 
 MCData |>
- filter(Run == 114) |>
+ filter(Run == 87) |>
   unnest(cols = c(tubedata, deltaOD_logistic_predict),names_sep = "_", keep_empty = TRUE) |>
   filter(tubedata_time >= 48,
          tubedata_time <= 72) |>
@@ -116,7 +118,7 @@ MCData |>
   theme_bw()
 
 MCData |>
- filter(Run == 114) |>
+ filter(Run == 87) |>
   unnest(cols = c(tubedata, deltaOD_logistic_predict),names_sep = "_", keep_empty = TRUE) |>
   filter(tubedata_time >= 48,
          tubedata_time <= 72) |>
@@ -127,16 +129,24 @@ MCData |>
   theme_bw()
 
 MCData |>
-  filter(Run == 114) |>
+  filter(Run == 87) |>
   unnest(cols = c(tubedata, deltaOD_logistic_predict),names_sep = "_", keep_empty = TRUE) |>
   # filter(tubedata_time >= 48,
   #        tubedata_time <= 72) |>
-  filter(Tube == 3) |>
+  filter(Tube == 6) |>
   ggplot() +
   geom_point(aes(x = tubedata_time, y = tubedata_Actinic_par)) +
   geom_point(aes(x = tubedata_time, y = 10000 * tubedata_deltaOD, colour = WL)) +
   facet_grid(cols = vars(Tube)) +
   theme_bw()
+```
+
+
+```{r remove all no growth tubes}
+
+MCData <- MCData %>% 
+  filter(deltaOD_Lmu_corr > 0)
+
 ```
 
 #https://stackoverflow.com/questions/76603287/calculate-linear-regression-slope-with-moving-window
@@ -171,12 +181,12 @@ ODinterval <- 5
   #        )
 
 # DielLightGrowthPro2 <- MCData |>
-#    # filter(Run == 114) |>
+#    # filter(Run == 87) |>
 #   # group_by(Filename, Tube) |>
 #    mutate(Actinic_umolphotonsm2h = map(tubedata, zoo::rollsum(.$Actinic_par * 60 * ODinterval , k = 60/ODinterval, fill = NA, align = "right")))
 #  
 # DielLightGrowthPro2 <- MCData |>
-#    # filter(Run == 114) |>
+#    # filter(Run == 87) |>
 #   # group_by(Filename, Tube) |>
 #    mutate(Actinic_umolphotonsm2h = map(tubedata, OD720)) 
 
@@ -186,15 +196,14 @@ ODinterval <- 5
 # filter(time - round(time) == 0) #crude collapse to 1 measurement per hour
 
 DielLightGrowthPro <- MCData |>
-  # filter(Run == 114) |>
+  # filter(Run == 87) |>
   unnest(cols = c(tubedata)) |>
    group_by(Filename, Tube) |>
    mutate(Actinic_umolphotonsm2h = zoo::rollsum(Actinic_par * 60 * ODinterval , k = 60/ODinterval, fill = NA, align = "right")) |> #PAR per h
   mutate(mu_OD720window = zoo::rollapply(cbind(time, log(OD720)), width = 60/ODinterval, FUN = slope, by.column=FALSE, fill=NA, align = "right")) |> #slope
   mutate(mu_Averh = zoo::rollmean(mu_OD720window, k = 60/ODinterval, fill = NA, align = "left")) |> #average of first 12 row  ungroup() 
 filter(time - round(time) == 0) |> #crude collapse to 1 measurement per hour
-nest(tubedata = c(time, ToD, Day, Actinic_par, OD680, OD720, deltaOD, ActinicMid_parOD720,
-                  ActinicMid_dayOD720,rollmeanOD720,rollmeandeltaOD,lognormOD720, lognormdeltaOD, LagSeedOD720, LagSeeddeltaOD,Actinic_umolphotonsm2h, mu_OD720window, mu_Averh)) %>% 
+nest(tubedata = c(time, ToD, Day, Actinic_par, OD680, OD720, deltaOD, ActinicMid_parOD720, ActinicMid_dayOD720,rollmeanOD720,rollmeandeltaOD,lognormOD720, lognormdeltaOD, LagSeedOD720, LagSeeddeltaOD,Actinic_umolphotonsm2h, mu_OD720window, mu_Averh)) %>% 
   ungroup()
 
 
@@ -204,7 +213,7 @@ nest(tubedata = c(time, ToD, Day, Actinic_par, OD680, OD720, deltaOD, ActinicMid
 
 ```{r preliminary plot}
 DielLightGrowthPro |>
-  filter(Run == 114) %>% 
+  filter(Run == 87) %>% 
    unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
   filter(tubedata_time >= 24) |>
   #        time <= 72) |>
@@ -226,7 +235,7 @@ DielLightGrowthPro |>
 #scale_color_gradient2 to have noon light, start and end of ToD dark
 
 DielLightGrowthPro |> 
-  filter(Run == 114) %>% 
+  filter(Run == 87) %>% 
    unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
   filter(tubedata_time >= 24) |>
    filter(tubedata_time <= 96) |>
@@ -236,7 +245,7 @@ DielLightGrowthPro |>
 
 
 DielLightGrowthPro |>
-    filter(Run == 114) %>% 
+    filter(Run == 87) %>% 
    unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
   filter(tubedata_time >= 24) |>
    filter(tubedata_time <= 96) |>
@@ -248,7 +257,7 @@ DielLightGrowthPro |>
   theme_bw()
 
 DielLightGrowthPro |>
-    filter(Run == 114) %>% 
+    filter(Run == 87) %>% 
    unnest(cols = c(tubedata),names_sep = "_", keep_empty = TRUE) |>
   filter(tubedata_time >= 24) |>
    filter(tubedata_time <= 96) |>
@@ -261,8 +270,10 @@ DielLightGrowthPro |>
 
 ```
 
+
+
 ```{r save hourly growth}
- # saveRDS(object = DielLightGrowthPro, file = file.path(DataOut, "DielLightGrowthPro.Rds"), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
+  saveRDS(object = DielLightGrowthPro, file = file.path(DataOut, "DielLightGrowthPro.Rds"), ascii = FALSE, version = NULL, compress = "xz", refhook = NULL)
 
 ```
 
