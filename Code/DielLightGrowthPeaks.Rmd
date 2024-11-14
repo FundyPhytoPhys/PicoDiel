@@ -469,19 +469,20 @@ DielFilter |>
 
 DielFilter |>
   filter(ToD >= 7,
-         ToD <= 14) |>
+         ToD <= 19) |>
   ggplot() +
   geom_point(aes(x = dplyr::lag(Actinic_umolphotonsm2h, n = 1L), y = mu_Averh, colour = ToD)) +
   facet_grid(cols = vars(Photoperiod), rows = vars(Par_ue)) +
+   scale_color_gradient2(low = "black", mid = "yellow", high = "black", midpoint = 13) +
   theme_bw()
 
 DielFilter |>
-  filter(ToD >= 7,
-         ToD <= 14) |>
+  filter(ToD >= 7) |>
   filter(Run == 39) |>
   ggplot() +
   geom_point(aes(x = dplyr::lag(Actinic_umolphotonsm2h, n = 1L), y = mu_Averh, colour = ToD)) +
   facet_grid(cols = vars(Photoperiod), rows = vars(Par_ue)) +
+   scale_color_gradient2(low = "black", mid = "yellow", high = "black", midpoint = 13)
   theme_bw()
 ```
 
