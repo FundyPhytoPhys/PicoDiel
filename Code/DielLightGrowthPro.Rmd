@@ -81,7 +81,7 @@ MCData <- readRDS(file = MCFiles[2])
 glimpse(MCData)
 
 MCData <- MCData %>% 
-  select(c(Strain,WL, SampleID, Run, Par_ue, Pur_ue, ObsDate, E_days, PurData, PurParRatio, PARPhotonDose_day, PURPhotonDose_day, Filename, Tube, ExpDate, MC, PrimaryOperator, Photoperiod, ExpEndHour, O2_uM, tubedata, GrowthAmpOD720_14days, GrowthAmpdeltaOD_14days, OD720_logistic_predict, deltaOD_logistic_predict, OD720_Lmu_corr, deltaOD_Lmu_corr))
+  select(c(Strain,WL, SampleID, Run, Par_ue, Pur_ue, ObsDate, E_days, PurData, PurParRatio, PARPhotonDose_day, PURPhotonDose_day, Filename, Tube, ExpDate, MC, PrimaryOperator, Photoperiod, ExpEndHour, O2_uM, tubedata, GrowthAmpOD680_14days, GrowthAmpdeltaOD_14days, OD680_logistic_predict, deltaOD_logistic_predict, OD680_Lmu_corr, deltaOD_Lmu_corr))
 
 glimpse(MCData)
 
@@ -199,10 +199,10 @@ DielLightGrowthPro <- MCData |>
   unnest(cols = c(tubedata)) |>
    group_by(Filename, Tube) |>
    mutate(Actinic_umolphotonsm2h = zoo::rollsum(Actinic_par * 60 * ODinterval , k = 60/ODinterval, fill = NA, align = "right")) |> #PAR per h
-  mutate(mu_OD720window = zoo::rollapply(cbind(time, log(OD720)), width = 60/ODinterval, FUN = slope, by.column=FALSE, fill=NA, align = "right")) |> #slope
-  mutate(mu_Averh = zoo::rollmean(mu_OD720window, k = 60/ODinterval, fill = NA, align = "left")) |> #average of first 12 row  ungroup() 
+  mutate(mu_OD680window = zoo::rollapply(cbind(time, log(OD680)), width = 60/ODinterval, FUN = slope, by.column=FALSE, fill=NA, align = "right")) |> #slope
+  mutate(mu_Averh = zoo::rollmean(mu_OD680window, k = 60/ODinterval, fill = NA, align = "left")) |> #average of first 12 row  ungroup() 
 filter(time - round(time) == 0) |> #crude collapse to 1 measurement per hour
-nest(tubedata = c(time, ToD, Day, Actinic_par, OD680, OD720, deltaOD, ActinicMid_parOD720, ActinicMid_dayOD720,rollmeanOD720,rollmeandeltaOD,lognormOD720, lognormdeltaOD, LagSeedOD720, LagSeeddeltaOD,Actinic_umolphotonsm2h, mu_OD720window, mu_Averh)) %>% 
+nest(tubedata = c(time, ToD, Day, Actinic_par, OD680, OD720, deltaOD, ActinicMid_parOD680, ActinicMid_dayOD680,rollmeanOD680,rollmeandeltaOD,lognormOD680, lognormdeltaOD, LagSeedOD680, LagSeeddeltaOD,Actinic_umolphotonsm2h, mu_OD680window, mu_Averh)) %>% 
   ungroup()
 
 
@@ -219,7 +219,7 @@ DielLightGrowthPro |>
   #filter(time < 100) |>
   ggplot() +
   geom_point(aes(x = tubedata_time, y = tubedata_mu_Averh, colour = tubedata_Actinic_umolphotonsm2h), size = 0.1) +
-  geom_point(aes(x = tubedata_time, y = tubedata_OD720), colour = "green", size = 0.1) +
+  geom_point(aes(x = tubedata_time, y = tubedata_OD680), colour = "green", size = 0.1) +
  facet_grid(cols = vars(Par_ue, Photoperiod, O2_uM, WL), rows = vars(Strain)) +
   theme_bw()
 

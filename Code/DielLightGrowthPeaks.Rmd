@@ -161,7 +161,7 @@ https://rc2e.com/timeseriesanalysis
 
 # Try tsibble
 ```{r tsibble}
-
+#problem here 'time' does not seem to become time series index?
 MuTime <- as_tsibble(DielFilter, index = time, regular = FALSE,  key = c(Filename, Tube, ExpDate, MC, PrimaryOperator, SampleID, Run, Strain, ExpStartTime, Par_ue, Photoperiod, Temp_c, O2, O2_Category, WL, LightShape))
 
 MuTime |>
@@ -173,7 +173,11 @@ MuTime |>
 
 # Try Autocorrelation
 ```{r autocorrelation}
-MuTime %>% acf(mu_Averh) %>% autoplot()
+# fails  'Error in `as.ts()`:
+#! Can't proceed with the key of multiple variables.
+# Run `rlang::last_trace()` to see where the error occurred.'
+
+#MuTime %>% acf(mu_Averh) %>% autoplot()
 
 
 acf(MuTime$mu_Averh, main = "Significant Autocorrelations")
@@ -198,7 +202,7 @@ Test <- MuTime %>%
   
   MuTime %>%
   group_by_key() %>%
-  index_by(time) %>%   #what does 'index' do; I am getting a result for very time
+  index_by(time) %>%   #what does 'index' do; I am getting a result for every time
   summarise(
     mu_high = max(mu_Averh, na.rm = TRUE),
     mu_low = min(mu_Averh, na.rm = TRUE)
